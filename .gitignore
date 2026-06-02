@@ -1,0 +1,30 @@
+# Dependencies
+node_modules/
+
+# Environment
+.env
+
+# Output files
+output/
+*.mp4
+*.mp3
+*.jpg
+*.png
+!public/images/.gitkeep
+!public/audio/.gitkeep
+
+# Build logs
+*.log
+build.log
+
+# Temp files
+/tmp/
+*.tmp
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/

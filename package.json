@@ -1,0 +1,38 @@
+{
+  "name": "ianews",
+  "version": "1.0.0",
+  "description": "AI-Powered News Video Generation System with Remotion",
+  "private": true,
+  "scripts": {
+    "scaffold": "tsx src/scaffold.ts",
+    "director": "tsx src/agents/Director.ts",
+    "script": "tsx src/agents/ScriptWriter.ts",
+    "visuals": "tsx src/agents/VisualArtist.ts",
+    "voice": "tsx src/agents/VoiceDirector.ts",
+    "editor": "tsx src/agents/Editor.ts",
+    "orchestrate": "tsx src/main.ts",
+    "start": "npm run orchestrate",
+    "render": "remotion render src/index.ts VideoComposition output/output.mp4",
+    "preview": "remotion preview src/index.ts",
+    "typecheck": "tsc --noEmit",
+    "clean": "rm -rf data/script.json public/images/* public/audio/* output/*"
+  },
+  "dependencies": {
+    "@remotion/cli": "^4.0.240",
+    "dotenv": "^16.4.7",
+    "edge-tts": "^1.0.1",
+    "node-fetch": "^2.7.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1",
+    "remotion": "^4.0.240",
+    "rss-parser": "^3.13.0",
+    "zod": "^3.23.8"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "@types/node-fetch": "^2.6.12",
+    "@types/react": "^18.3.18",
+    "tsx": "^4.19.2",
+    "typescript": "^5.3.3"
+  }
+}
