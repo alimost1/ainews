@@ -1,0 +1,82 @@
+{
+  "title": "تخلّوا عن الحميات القاسية: 6 عادات صحية مستدامة لحياة أفضل",
+  "fps": 30,
+  "width": 1080,
+  "height": 1920,
+  "lang": "ar",
+  "dir": "rtl",
+  "scenes": [
+    {
+      "scene_number": 1,
+      "narration_text": "هل سئمت من الحميات القاسية التي لا تدوم؟ أخصائية نفسية تكشف عن ست عادات بسيطة ومستدامة تعزز صحتك الجسدية والنفسية دون حرمان.",
+      "caption_text": "ودّعوا الحميات القاسية",
+      "mood": "hopeful",
+      "image_prompt": "Close-up of fresh colorful vegetables arranged on a wooden kitchen counter, bright natural daylight streaming through window, overhead shot, photorealistic, vibrant greens and reds, healthy eating concept",
+      "duration_seconds": 10
+    },
+    {
+      "scene_number": 2,
+      "narration_text": "العادة الأولى: تناول طعامك بوعي. استمتع بكل لقمة وامضغ ببطء. الأكل الواعي يساعد على الهضم ويقلل من الإفراط في الطعام بنسبة ثلاثين بالمئة.",
+      "caption_text": "الأكل الواعي",
+      "mood": "calm",
+      "image_prompt": "Close-up of a single bowl of fresh salad with olive oil drizzle, soft natural lighting, shallow depth of field, wooden table surface, photorealistic food photography, peaceful atmosphere",
+      "duration_seconds": 10
+    },
+    {
+      "scene_number": 3,
+      "narration_text": "العادة الثانية: الحركة اليومية. لا تحتاج إلى صالة رياضية. ثلاثون دقيقة من المشي السريع يومياً تقلل خطر أمراض القلب بنسبة خمس وثلاثين بالمئة.",
+      "caption_text": "تحرّك يومياً",
+      "mood": "excited",
+      "image_prompt": "Wide shot of a scenic walking path through a lush green park, trees lining both sides, golden hour sunlight filtering through leaves, peaceful nature setting, photorealistic landscape",
+      "duration_seconds": 10
+    },
+    {
+      "scene_number": 4,
+      "narration_text": "العادة الثالثة: النوم الجيد. سبع إلى ثماني ساعات من النوم المتواصل تعزز المناعة وتحسن المزاج وتقوي الذاكرة. النوم هو أساس الصحة المتكاملة.",
+      "caption_text": "نم جيداً",
+      "mood": "calm",
+      "image_prompt": "Close-up of a serene bedroom with soft white bedding, warm ambient lamp light in background, morning sunlight through sheer curtains, peaceful sleep environment, photorealistic interior",
+      "duration_seconds": 10
+    },
+    {
+      "scene_number": 5,
+      "narration_text": "العادة الرابعة: شرب الماء بانتظام. الماء ينظف الجسم من السموم ويحسن البشرة ويعزز التركيز. اشرب ثمانية أكواب يومياً على الأقل لصحة أفضل.",
+      "caption_text": "اشرب الماء",
+      "mood": "calm",
+      "image_prompt": "Close-up of clear water being poured into a glass, water droplets splashing, bright natural light refracting through water, macro photography, refreshing and clean aesthetic, photorealistic",
+      "duration_seconds": 10
+    },
+    {
+      "scene_number": 6,
+      "narration_text": "العادة الخامسة: التواصل الاجتماعي الحقيقي. العلاقات الصحية تقلل التوتر وتطيل العمر. خصص وقتاً يومياً للتواصل مع من تحب بعيداً عن الشاشات.",
+      "caption_text": "تواصل مع أحبائك",
+      "mood": "hopeful",
+      "image_prompt": "Close-up of two hands holding a warm cup of tea together on a cozy table, soft warm lighting, intimate atmosphere, connection and warmth concept, photorealistic, shallow depth of field",
+      "duration_seconds": 10
+    },
+    {
+      "scene_number": 7,
+      "narration_text": "العادة السادسة: التأمل والتنفس العميق. عشر دقائق يومياً من التأمل تخفض هرمون التوتر الكورتيزول وتحسن جودة حياتك بشكل ملحوظ.",
+      "caption_text": "تأمل وتنفس",
+      "mood": "calm",
+      "image_prompt": "Wide shot of a serene outdoor setting with soft morning mist, a yoga mat on green grass, peaceful sunrise in background, golden light, tranquil wellness atmosphere, photorealistic landscape",
+      "duration_seconds": 10
+    },
+    {
+      "scene_number": 8,
+      "narration_text": "هذه العادات الست ليست مجرد نصائح عابرة، بل أسلوب حياة متكامل. الدراسات تؤكد أن الاستمرار على عادات صغيرة أفضل بكثير من تغييرات كبيرة لا تدوم.",
+      "caption_text": "عادات صغيرة نتائج كبيرة",
+      "mood": "hopeful",
+      "image_prompt": "Overhead shot of a healthy breakfast spread on a white table, fresh fruits, oatmeal, nuts, green smoothie, bright natural daylight, clean and fresh aesthetic, photorealistic food photography",
+      "duration_seconds": 10
+    },
+    {
+      "scene_number": 9,
+      "narration_text": "ابدأ اليوم بعادة واحدة فقط. أضف عادة جديدة كل أسبوع. خلال شهرين ستلاحظ فرقاً كبيراً في صحتك وطاقتك وسعادتك. شاركوا هذا الفيديو مع من تحبون.",
+      "caption_text": "ابدأ اليوم وشاركوا الفيديو",
+      "mood": "excited",
+      "image_prompt": "Wide shot of a beautiful sunrise over a calm lake, golden light reflecting on water, fresh morning atmosphere, new beginning concept, inspiring and hopeful mood, photorealistic landscape photography",
+      "duration_seconds": 10
+    }
+  ]
+}

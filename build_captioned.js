@@ -1,11 +1,11 @@
 #!/usr/bin/env node
-// build_captioned.js — iAnews Video Builder with drawtext Captions
+// build_captioned.js — iAnews Video Builder with drawtext Captions (No Avatar)
 //
 // Pipeline:
 //   1. Build segments from images+audio+drawtext at 576×1024 (ultrafast)
 //   2. Concatenate with -c copy (fast, no re-encode)
 //
-// Caption style: Amiri Bold 72pt, white + gold highlight, black shadow, dark bg bar
+// Caption style: Amiri Bold 56/60pt, white base + gold highlight, no shadow, no bg bar
 
 const { execSync } = require("child_process");
 const fs = require("fs");
@@ -20,7 +20,7 @@ const DATA    = path.join(PROJECT, "data");
 
 const FPS = 30;
 const W = 576, H = 1024;
-const FONT = "/usr/share/fonts/truetype/amiri/amiri-bold.ttf";
+const FONT = "/usr/share/fonts/opentype/fonts-hosny-amiri/Amiri-Bold.ttf";
 const SEGMENTS = [];
 
 if (!fs.existsSync(OUTPUT)) fs.mkdirSync(OUTPUT, { recursive: true });
@@ -28,13 +28,17 @@ if (!fs.existsSync(OUTPUT)) fs.mkdirSync(OUTPUT, { recursive: true });
 const script = JSON.parse(fs.readFileSync(path.join(DATA, "script.json"), "utf-8"));
 
 console.log("\n" + "=".repeat(55));
-console.log("🎬 iAnews Video Builder — drawtext Captions");
+console.log("🎬 iAnews Video Builder — Captions Only (No Avatar)");
 console.log("=".repeat(55));
-console.log("Topic:  " + script.topic);
+console.log("Topic:  " + (script.topic || script.title));
 console.log("Scenes: " + script.scenes.length + "\n");
 
 function escText(t) {
-  return t.replace(/\\/g, "\\\\").replace(/'/g, "'\\\\''");
+  return t
+    .replace(/\u201C/g, '"').replace(/\u201D/g, '"')
+    .replace(/\u2018/g, "'").replace(/\u2019/g, "'")
+    .replace(/\\/g, '\\\\')
+    .replace(/:/g, '\\:');
 }
 
 // ─── Step 1: Build segments ───────────────────────────────────────
@@ -43,7 +47,8 @@ for (const scene of script.scenes) {
   const num = scene.scene_number;
   let img = path.join(IMAGES, "scene_" + num + ".png");
   if (!fs.existsSync(img)) img = path.join(IMAGES, "scene_" + num + ".jpg");
-  const aud = path.join(AUDIO, "scene_" + num + ".mp3");
+  let aud = path.join(AUDIO, "scene_" + num + ".wav");
+  if (!fs.existsSync(aud)) aud = path.join(AUDIO, "scene_" + num + ".mp3");
   const seg = path.join(OUTPUT, "segment_" + num + ".mp4");
 
   if (!fs.existsSync(img)) { console.error("  ✗ Scene " + num + ": no image"); continue; }
@@ -57,48 +62,38 @@ for (const scene of script.scenes) {
   } catch (e) { dur = 7; }
 
   const segDur = Math.round((dur + 0.3) * 100) / 100;
-  const caption = (scene.caption_text || "").trim();
+  // Use narration_text (full TTS content) for captions instead of short caption_text
+  const caption = (scene.narration_text || scene.caption_text || "").trim();
 
-  console.log("Scene " + num + ": " + dur.toFixed(1) + "s | \"" + caption + "\"");
+  console.log("Scene " + num + ": " + dur.toFixed(1) + "s | words: " + caption.split(/\s+/).length);
 
-  // Scale filter: cover-fill from source to 576×1024
-  const scaleFilter = "scale=" + W + ":" + H + ":force_original_aspect_ratio=increase,crop=" + W + ":" + H;
-
-  // Build filter chain — dark bg + dim white caption + gold highlight per phrase
-  const filters = [scaleFilter];
-
-  // Dark caption background bar (bottom 22%)
-  filters.push("drawbox=x=0:y=ih*0.78:w=iw:h=ih*0.22:color=black@0.55:t=fill");
+  // Build drawtext filters (no background bar)
+  const filters = [];
 
   if (caption) {
-    // Split caption into 2-3 word groups for highlight
     const words = caption.split(/\s+/).filter(w => w.length > 0);
-    const groups = [];
-    const groupSize = Math.ceil(words.length / 2);
-    for (let i = 0; i < words.length; i += groupSize) {
-      groups.push(words.slice(i, i + groupSize).join(" "));
-    }
-    const groupDur = segDur / groups.length;
+    const wordDur = segDur / words.length;
 
-    // Base layer: full caption dimmed
+    // Base layer: full narration dimmed (white, semi-transparent)
+    // Position: bottom of screen with margin above for YouTube UI
     filters.push(
       "drawtext=fontfile=" + FONT + ":text='" + escText(caption) + "'" +
-      ":fontsize=48:fontcolor=white@0.30" +
+      ":fontsize=44:fontcolor=white@0.35" +
       ":x=(w-text_w)/2:y=h-th-80" +
-      ":shadowcolor=black@0.9:shadowx=2:shadowy=2:text_shaping=1"
+      ":text_shaping=1:line_spacing=12:shadowcolor=black@0.6:shadowx=2:shadowy=2"
     );
 
-    // Highlight groups sequentially
+    // Highlight each word sequentially (gold, fully opaque, larger)
     let t = 0;
-    for (let i = 0; i < groups.length; i++) {
-      const g = escText(groups[i]);
-      const tEnd = t + groupDur;
+    for (let i = 0; i < words.length; i++) {
+      const w = escText(words[i]);
+      const tEnd = t + wordDur;
       filters.push(
-        "drawtext=fontfile=" + FONT + ":text='" + g + "'" +
-        ":fontsize=48:fontcolor=#FFD700" +
+        "drawtext=fontfile=" + FONT + ":text='" + w + "'" +
+        ":fontsize=52:fontcolor=yellow@1.0" +
         ":x=(w-text_w)/2:y=h-th-80" +
-        ":shadowcolor=black@0.9:shadowx=2:shadowy=2:text_shaping=1" +
-        ":enable='between(t," + t.toFixed(2) + "," + (tEnd + 0.1).toFixed(2) + ")'"
+        ":text_shaping=1:shadowcolor=black@0.8:shadowx=2:shadowy=2" +
+        ":enable='between(t," + t.toFixed(3) + "," + (tEnd + 0.05).toFixed(3) + ")'"
       );
       t = tEnd;
     }
@@ -106,25 +101,26 @@ for (const scene of script.scenes) {
 
   filters.push("format=yuv420p");
 
-  // Simpler approach: use -vf with comma-separated filters at 576×1024 (fast)
-  // At this resolution, -vf works fine (shorter filter string)
-  const filterStr = filters.join(",");
-
   try {
-    execSync(
+    // Write filter_complex to temp file to avoid shell escaping issues with Arabic text
+    const filterFile = "/tmp/afilter_" + num + ".txt";
+    const filterStr = "[0:v]scale=" + W + ":" + H + ":force_original_aspect_ratio=increase,crop=" + W + ":" + H + "," + filters.join(",") + "[outv]";
+    fs.writeFileSync(filterFile, filterStr);
+    const ffmpegCmd =
       "ffmpeg -y -loop 1 -i " + JSON.stringify(img) +
       " -i " + JSON.stringify(aud) +
-      " -vf \"" + filterStr + "\"" +
-      " -c:v libx264 -preset ultrafast -crf 24 -c:a aac -b:a 128k" +
-      " -t " + segDur + " -shortest -r " + FPS + " -movflags +faststart" +
-      " " + JSON.stringify(seg),
-      { timeout: 120000, stdio: "pipe", maxBuffer: 10 * 1024 * 1024 }
-    );
+      " -filter_complex_script " + JSON.stringify(filterFile) +
+      " -map \"[outv]\" -map 1:a" +
+      " -c:v libx264 -preset ultrafast -crf 26 -c:a aac -b:a 128k" +
+      " -t " + segDur + " -r " + FPS + " -movflags +faststart" +
+      " " + JSON.stringify(seg);
+
+    execSync(ffmpegCmd, { timeout: 90000, stdio: "pipe", maxBuffer: 10 * 1024 * 1024 });
     const sz = fs.statSync(seg).size;
     console.log("  ✓ " + (sz / 1024).toFixed(0) + " KB");
     SEGMENTS.push({ path: seg, duration: segDur });
   } catch (err) {
-    console.error("  ✗ " + (err.message || "").substring(0, 120));
+    console.error("  ✗ " + (err.message || "").substring(0, 200));
   }
 }
 
@@ -157,6 +153,7 @@ console.log("   Duration:  " + finDur.toFixed(1) + "s");
 console.log("   Size:      " + (finSz / 1024).toFixed(0) + " KB");
 console.log("   Codec:     H.264 + AAC @ " + W + "x" + H);
 console.log("   Caption:   drawtext highlight (gold phrase-by-phrase)");
+console.log("   Avatar:    ❌ none (captions only)");
 console.log("   Font:      Amiri Bold (text_shaping=1)");
 console.log("=".repeat(55));
 

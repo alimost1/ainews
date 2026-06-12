@@ -3,6 +3,8 @@ node_modules/
 
 # Environment
 .env
+data/fb_tokens.json
+/root/.config/google/
 
 # Output files
 output/

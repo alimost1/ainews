@@ -1,0 +1,82 @@
+{
+  "title": "SpaceX تطرح أسهمها في أكبر طرح عام على الإطلاق — 135 دولاراً للسهم",
+  "fps": 30,
+  "width": 1080,
+  "height": 1920,
+  "lang": "ar",
+  "dir": "rtl",
+  "scenes": [
+    {
+      "scene_number": 1,
+      "narration_text": "في حدث تاريخي يعيد رسم مستقبل سوق الأسهم، أعلنت شركة سبيس إكس عن تسعير أسهمها رسمياً عند 135 دولاراً للسهم، في ما يُعد أكبر طرح عام أولي في التاريخ.",
+      "caption_text": "SpaceX تطرح أسهمها",
+      "mood": "excited",
+      "image_prompt": "SpaceX Falcon 9 rocket launching from Cape Canaveral at sunset, massive orange flame exhaust, dramatic clouds, golden hour lighting, low angle shot looking up, cinematic, photorealistic, 8k",
+      "duration_seconds": 12
+    },
+    {
+      "scene_number": 2,
+      "narration_text": "هذا الطرح القياسي يُعيد تعريف مفهوم الشركات الناشئة في عصر الذكاء الاصطناعي، حيث تضم مجموعة MANGOS شركات مثل ميتا وأنثروبيك ونوفيديا وجوجل وأوبن أيه آي.",
+      "caption_text": "عصر MANGOS الجديد",
+      "mood": "serious",
+      "image_prompt": "Futuristic city skyline at night with glowing digital network connections overlay, holographic stock ticker displays floating in air, blue and purple neon lights, wide angle aerial perspective, cinematic, photorealistic",
+      "duration_seconds": 12
+    },
+    {
+      "scene_number": 3,
+      "narration_text": "لكن الخبراء يحذرون المستثمرين الأفراد من التوقعات المبالغ فيها. الأسهم المخصصة للمستثمرين الأفراد قليلة جداً، ولن يحققوا الثروة المنتظرة.",
+      "caption_text": "تحذير للمستثمرين",
+      "mood": "serious",
+      "image_prompt": "Stock market trading floor with multiple screens showing red and green charts, dramatic shadows, tense atmosphere, close-up of financial data displays, cool blue lighting, photorealistic",
+      "duration_seconds": 11
+    },
+    {
+      "scene_number": 4,
+      "narration_text": "سبيس إكس لم تعد مجرد شركة صواريخ. فهي مرتبطة بشركة إكس أيه آي الذكاء الاصطناعي وخدمة ستارلينك للإنترنت، مما يجعلها تقاطعاً فريداً بين الفضاء والتكنولوجيا.",
+      "caption_text": "فضاء + ذكاء اصطناعي",
+      "mood": "excited",
+      "image_prompt": "Starlink satellite constellation orbiting Earth against starfield, curved blue planet below, digital data streams connecting satellites, space photography, ultra wide angle, cinematic lighting, photorealistic",
+      "duration_seconds": 12
+    },
+    {
+      "scene_number": 5,
+      "narration_text": "المستثمرون في صناديق الاستثمار الخاصة بسبيس إكس يواجهون أيضاً مخاطر غير معروفة، حيث قد لا يعرفون قيمة حصصهم الحقيقية حتى انتهاء فترة الحظر.",
+      "caption_text": "مخاطر خفية",
+      "mood": "serious",
+      "image_prompt": "Locked vault door in dark room with light rays escaping through cracks, shadows, mystery atmosphere, dramatic lighting, macro close-up of keyhole, photorealistic",
+      "duration_seconds": 10
+    },
+    {
+      "scene_number": 6,
+      "narration_text": "يأتي هذا الطرح في صيف حملي للاكتتابات العامة، حيث تتجه شركات كبرى مثل أنثروبيك وأوبن أيه آي نحو الأسواق العامة، في ظروف استثنائية.",
+      "caption_text": "صيف الاكتتابات",
+      "mood": "hopeful",
+      "image_prompt": "Sunrise over modern financial district, golden light reflecting off glass skyscrapers, warm atmosphere, birds-eye view of city awakening, hopeful mood, cinematic, photorealistic",
+      "duration_seconds": 11
+    },
+    {
+      "scene_number": 7,
+      "narration_text": "تسعير 135 دولاراً للسهم يعني تقييم الشركة بقيمة ضخمة تتجاوز تريليوني دولار، وهو رقم يضع سبيس إكس في مصاف أكبر الشركات التقنية في العالم.",
+      "caption_text": "تقييم تريليوني دولار",
+      "mood": "excited",
+      "image_prompt": "Close-up of massive digital number display showing trillions, surrounded by holographic financial data, dark blue background with glowing cyan particles, futuristic interface, cinematic, photorealistic",
+      "duration_seconds": 12
+    },
+    {
+      "scene_number": 8,
+      "narration_text": "لكن تسلا الذكاء الاصطناعي وخدمة ستارلينك التي توفر الإنترنت لملايين البشر حول العالم هي المحرك الحقيقي وراء هذا التقييم الاستثنائي.",
+      "caption_text": "ستارلينك والذكاء الاصطناعي",
+      "mood": "hopeful",
+      "image_prompt": "Global internet connectivity visualization, glowing fiber optic network pathways across a dark world map, data streams flowing between continents, satellite connections, blue and green lights, cinematic, photorealistic",
+      "duration_seconds": 12
+    },
+    {
+      "scene_number": 9,
+      "narration_text": "طرح سبيس إكس يفتح الباب أمام حقبة جديدة حيث تلتقي التكنولوجيا والفضاء والذكاء الاصطناعي لتشكل مستقبل البشرية. هل أنتم مستعدون لهذا المستقبل؟",
+      "caption_text": "مستقبل البشرية",
+      "mood": "hopeful",
+      "image_prompt": "Distant view of Earth from space with rocket trajectory arc, stars and nebula in background, dramatic cosmic lighting, sense of progress and hope, ultra wide angle, cinematic, photorealistic, 8k",
+      "duration_seconds": 13
+    }
+  ]
+}

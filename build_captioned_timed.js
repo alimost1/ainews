@@ -19,8 +19,8 @@ const CONCAT = path.join(OUTPUT, "concat_list.txt");
 
 const FPS = 30;
 const W = 576, H = 1024;
-const FONT = "/usr/share/fonts/truetype/amiri/amiri-bold.ttf";
-const PYTHON = "/usr/local/lib/hermes-agent/venv/bin/python3";
+const FONT = "/usr/share/fonts/opentype/fonts-hosny-amiri/Amiri-Bold.ttf";
+const PYTHON = "/root/.local/share/uv/python/cpython-3.11.15-linux-x86_64-gnu/bin/python3";
 const SEGMENTS = [];
 
 if (!fs.existsSync(OUTPUT)) fs.mkdirSync(OUTPUT, { recursive: true });

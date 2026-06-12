@@ -1,0 +1,82 @@
+{
+  "title": "تخلّوا عن الحميات القاسية.. 6 عادات صحية مستدامة لحياة أفضل",
+  "fps": 30,
+  "width": 1080,
+  "height": 1920,
+  "lang": "ar",
+  "dir": "rtl",
+  "scenes": [
+    {
+      "scene_number": 1,
+      "narration_text": "هل جربتَ حمية قاسية ولم تنجح؟ لستَ وحدك. الدراسات الحديثة تُظهر أن أكثر من تسعين بالمئة من الحميات الصارمة تفشل خلال عام واحد، بل وتؤدي إلى زيادة الوزن وتأثيرات سلبية على الصحة النفسية.",
+      "caption_text": "الحميات القاسية لا تنجح",
+      "mood": "serious",
+      "image_prompt": "A dramatic before-and-after concept showing a cracked diet plate on one side and fresh colorful vegetables on the other, warm kitchen lighting, cinematic composition, no humans no faces no people",
+      "duration_seconds": 12
+    },
+    {
+      "scene_number": 2,
+      "narration_text": "الدكتورة سارة محمد أخصائية نفسية توضح أن الحميات القاسية تُضعف عملية التمثيل الغذائي وتُسبب اضطرابات في الأكل. الحل ليس في الحرمان بل في بناء عادات صحية مستدامة يمكن الاستمرار عليها مدى الحياة.",
+      "caption_text": "الحل في الاستدامة",
+      "mood": "calm",
+      "image_prompt": "A serene wellness scene with a balanced meal bowl, fresh fruits, green smoothie, morning sunlight through window, peaceful atmosphere, no humans no faces no people",
+      "duration_seconds": 12
+    },
+    {
+      "scene_number": 3,
+      "narration_text": "العادة الأولى: تناول وجبات منتظمة دون تخطي. تخطي وجبة الإفطار مثلاً يُبطئ الأيض ويزيد الرغبة في تناول السكريات لاحقاً. وجبة إفطار غنية بالبروتين تمنحك طاقة مستقرة طوال اليوم.",
+      "caption_text": "وجبات منتظمة ومتوازنة",
+      "mood": "hopeful",
+      "image_prompt": "A beautiful breakfast spread with eggs, whole grain bread, avocado, fresh berries, orange juice, rustic wooden table, golden morning light, no humans no faces no people",
+      "duration_seconds": 12
+    },
+    {
+      "scene_number": 4,
+      "narration_text": "العادة الثانية: اشرب الماء بكثرة. يُوصى الخبراء بشرب ثمانية أكواب يومياً على الأقل. الماء يُحسّن الهضم ويُنقي الجسم من السموم ويُعزز نضارة البشرة والتركيز الذهني.",
+      "caption_text": "الماء سر الصحة",
+      "mood": "calm",
+      "image_prompt": "Crystal clear water being poured into a glass, fresh lemon slices, mint leaves, splashing water droplets, bright natural lighting, refreshing atmosphere, no humans no faces no people",
+      "duration_seconds": 10
+    },
+    {
+      "scene_number": 5,
+      "narration_text": "العادة الثالثة: النوم الجيد ليس رفاهية بل ضرورة. قلة النوم ترفع هرمون الكورتيزول وتزيد الشهية للطعام غير الصحي. حاول النوم سبع إلى ثماني ساعات كل ليلة في غرفة مظلمة وهادئة.",
+      "caption_text": "نوم عميق وصحي",
+      "mood": "calm",
+      "image_prompt": "A peaceful bedroom scene at night, soft moonlight through curtains, comfortable bed with white linens, lavender flowers on nightstand, serene sleeping atmosphere, no humans no faces no people",
+      "duration_seconds": 12
+    },
+    {
+      "scene_number": 6,
+      "narration_text": "العادة الرابعة: الحركة اليومية. لا تحتاج إلى رياضة مكثفة. المشي لمدة ثلاثين دقيقة يومياً يُقلل خطر أمراض القلب بنسبة خمس وثلاثين بالمئة ويُحسّن المزاج ويُخفف التوتر والقلق.",
+      "caption_text": "المشي يصنع الفرق",
+      "mood": "excited",
+      "image_prompt": "A scenic walking path through a green park, cherry blossom trees, golden sunset light, peaceful nature trail, vibrant colors, no humans no faces no people",
+      "duration_seconds": 10
+    },
+    {
+      "scene_number": 7,
+      "narration_text": "العادة الخامسة: تقليل السكريات المُضافة. السكر الزائد يُسبب الالتهابات ويزيد خطر السكري والسمنة. استبدل المشروبات الغازية بالفواكه الطبيعية واستخدم العسل باعتدال كصحي بديل.",
+      "caption_text": "قلل السكر المضاف",
+      "mood": "serious",
+      "image_prompt": "A comparison scene showing colorful fresh fruits like berries and oranges next to a discarded candy wrapper, natural vibrant colors, clean composition, no humans no faces no people",
+      "duration_seconds": 10
+    },
+    {
+      "scene_number": 8,
+      "narration_text": "العادة السادسة: الصحة النفسية أولاً. التوتر المزمن يدمر الجسم والعقل. خصص عشر دقائق يومياً للتأمل أو التنفس العميق. دراسة بريطانية حديثة أثبتت أن التأمل المنتظم يُخفف القلق بنسبة تزيد عن أربعين بالمئة.",
+      "caption_text": "صحتك النفسية مهمة",
+      "mood": "hopeful",
+      "image_prompt": "A tranquil meditation scene with soft ambient lighting, zen garden with smooth stones, bamboo plants, incense smoke gently rising, peaceful minimalist atmosphere, no humans no faces no people",
+      "duration_seconds": 12
+    },
+    {
+      "scene_number": 9,
+      "narration_text": "الصحة ليست وجهة بل رحلة يومية. ابدأ بتغيير صغير واحد كل أسبوع وستلاحظ فرقاً كبيراً خلال أشهر قليلة. شاركنا في التعليقات: ما العادة الصحية التي تريد أن تبدأ بها اليوم؟ تابعنا للمزيد من النصائح الصحية المفيدة.",
+      "caption_text": "ابدأ رحلتك الصحية اليوم",
+      "mood": "excited",
+      "image_prompt": "A beautiful sunrise over a calm ocean, golden light spreading across the horizon, hopeful and inspiring atmosphere, wide cinematic landscape, no humans no faces no people",
+      "duration_seconds": 12
+    }
+  ]
+}
