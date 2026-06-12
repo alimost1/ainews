@@ -14,7 +14,7 @@ const PROJECT = '/root/ianews';
 const _envPath = path.join(PROJECT, '.env');
 const _env = {};
 if (fs.existsSync(_envPath)) {
-  const _lines = fs.readFileSync(_envPath, 'utf-8').splitlines();
+  const _lines = fs.readFileSync(_envPath, 'utf-8').split(/\r?\n/);
   for (const _l of _lines) {
     const _line = _l.trim();
     if (_line && !_line.startsWith('#') && _line.includes('=')) {
