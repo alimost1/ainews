@@ -4,7 +4,6 @@
   "description": "AI-Powered News Video Generation System with Remotion",
   "private": true,
   "scripts": {
-    "scaffold": "tsx src/scaffold.ts",
     "director": "tsx src/agents/Director.ts",
     "script": "tsx src/agents/ScriptWriter.ts",
     "visuals": "tsx src/agents/VisualArtist.ts",
@@ -15,7 +14,8 @@
     "render": "remotion render src/index.ts VideoComposition output/output.mp4",
     "preview": "remotion preview src/index.ts",
     "typecheck": "tsc --noEmit",
-    "clean": "rm -rf data/script.json public/images/* public/audio/* output/*"
+    "clean": "rm -rf data/script.json public/images/* public/audio/* output/*",
+    "test": "node --import tsx --test tests/*.test.ts"
   },
   "dependencies": {
     "@remotion/cli": "^4.0.240",
