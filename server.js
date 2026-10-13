@@ -444,6 +444,29 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+
+  // ─── Static media serving (for Higgsfield audio_url/image_url inputs) ─
+  // /media/<file> serves /root/ainews/public/media/<file>
+  if (pathname.startsWith('/media/')) {
+    const MEDIA_DIR = path.join(PROJECT, 'public', 'media');
+    const rel = decodeURIComponent(pathname.slice('/media/'.length)).replace(/(\.\.|\/)/g, '');
+    const f = path.join(MEDIA_DIR, rel);
+    if (rel && fs.existsSync(f) && fs.statSync(f).isFile()) {
+      const ext = path.extname(f).toLowerCase();
+      const mime = { '.mp3': 'audio/mpeg', '.wav': 'audio/wav', '.png': 'image/png', '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.mp4': 'video/mp4' }[ext] || 'application/octet-stream';
+      res.writeHead(200, {
+        'Content-Type': mime,
+        'Content-Length': fs.statSync(f).size,
+        'Access-Control-Allow-Origin': '*',
+      });
+      fs.createReadStream(f).pipe(res);
+      return;
+    }
+    res.writeHead(404, { 'Content-Type': 'application/json' });
+    res.end(JSON.stringify({ error: 'Not found' }));
+    return;
+  }
+
   res.writeHead(302, { Location: 'https://ianews.executioneveryday.com' });
   res.end();
 });
