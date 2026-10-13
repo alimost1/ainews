@@ -15,7 +15,9 @@
     "preview": "remotion preview src/index.ts",
     "typecheck": "tsc --noEmit",
     "clean": "rm -rf data/script.json public/images/* public/audio/* output/*",
-    "test": "node --import tsx --test tests/*.test.ts"
+    "test": "node --import tsx --test tests/*.test.ts",
+    "start:server": "node server.js",
+    "build:dashboard": "tsc -p tsconfig.dashboard.json"
   },
   "dependencies": {
     "@remotion/cli": "^4.0.240",

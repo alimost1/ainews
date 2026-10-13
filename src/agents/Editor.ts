@@ -14,10 +14,10 @@ import { ScriptSchema } from "../types";
 import type { Script } from "../types";
 import { buildTimeline } from "../pipeline/timeline";
 
-const COMPOSITION_PATH = path.join(__dirname, "../components/VideoComposition.tsx");
-const SCENE_PATH = path.join(__dirname, "../components/Scene.tsx");
-const INDEX_PATH = path.join(__dirname, "../index.ts");
-const REMOTION_CONFIG_PATH = path.join(CONFIG.projectRoot, "remotion.config.ts");
+const COMPOSITION_PATH = path.join(CONFIG.editorDir, "components", "VideoComposition.tsx");
+const SCENE_PATH = path.join(CONFIG.editorDir, "components", "Scene.tsx");
+const INDEX_PATH = path.join(CONFIG.editorDir, "index.tsx");
+const REMOTION_CONFIG_PATH = path.join(CONFIG.editorDir === path.resolve(__dirname, "../") ? CONFIG.projectRoot : CONFIG.editorDir, "remotion.config.ts");
 
 /**
  * Generate the Scene component
@@ -294,6 +294,29 @@ registerRoot(RemotionRoot);
 `;
 }
 
+/** Ensure the render workspace has a minimal package.json so tsx/remotion resolve. */
+function ensureRenderPackage(renderDir: string): void {
+  const pkgPath = path.join(renderDir, "package.json");
+  if (fs.existsSync(pkgPath)) return;
+  const rootPkg = JSON.parse(fs.readFileSync(path.join(CONFIG.projectRoot, "package.json"), "utf-8"));
+  fs.writeFileSync(pkgPath, JSON.stringify({
+    name: `ianews-render-${path.basename(renderDir)}`,
+    private: true,
+    // Reuse the project's dependencies by resolving node_modules upward; the
+    // generated files only import from 'remotion'/'react' which are installed
+    // in the project root and reachable via standard node resolution.
+    dependencies: rootPkg.dependencies,
+  }, null, 2));
+  // tsconfig extends the root so JSX compiles identically
+  const tsconfigPath = path.join(renderDir, "tsconfig.json");
+  if (!fs.existsSync(tsconfigPath)) {
+    fs.writeFileSync(tsconfigPath, JSON.stringify({
+      extends: path.relative(renderDir, path.join(CONFIG.projectRoot, "tsconfig.json")),
+      compilerOptions: { jsx: "react-jsx" },
+    }, null, 2));
+  }
+}
+
 /**
  * Main Editor function
  */
@@ -321,6 +344,7 @@ export async function runEditor(): Promise<void> {
   }
 
   // Write Scene component
+  fs.mkdirSync(path.dirname(SCENE_PATH), { recursive: true });
   fs.writeFileSync(SCENE_PATH, generateSceneComponent());
   logger.success(`Scene component written to ${SCENE_PATH}`);
 
@@ -331,6 +355,9 @@ export async function runEditor(): Promise<void> {
   // Write index.ts
   fs.writeFileSync(INDEX_PATH, generateIndexTs());
   logger.success(`Entry point written to ${INDEX_PATH}`);
+
+  // Per-render workspace package for isolated renders
+  if (CONFIG.editorDir !== path.resolve(__dirname, "../")) ensureRenderPackage(CONFIG.editorDir);
 
   // Write remotion.config.ts
   fs.writeFileSync(REMOTION_CONFIG_PATH, generateRemotionConfig());

@@ -1,0 +1,357 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>iAnews — لوحة توليد الفيديو</title>
+<style>
+  :root {
+    --bg: #0f0c29; --bg2: #1a1633; --card: rgba(255,255,255,0.06);
+    --border: rgba(255,255,255,0.12); --text: #eef0ff; --muted: #9aa0c3;
+    --accent: #1f4abf; --accent2: #42a5f5; --ok: #22c55e; --warn: #f59e0b; --err: #ef4444;
+  }
+  * { box-sizing: border-box; margin: 0; }
+  html[dir="ltr"] { direction: ltr; }
+  body {
+    font-family: "Segoe UI", "Noto Sans Arabic", Tahoma, sans-serif;
+    background: linear-gradient(135deg, var(--bg), var(--bg2) 60%, #24243e);
+    color: var(--text); min-height: 100vh; padding: clamp(12px, 3vw, 32px);
+  }
+  .wrap { max-width: 960px; margin: 0 auto; }
+  h1 { font-size: clamp(1.3rem, 3.5vw, 2rem); margin-bottom: 4px; }
+  .sub { color: var(--muted); font-size: 0.9rem; margin-bottom: 20px; }
+  .card {
+    background: var(--card); border: 1px solid var(--border); border-radius: 14px;
+    padding: clamp(14px, 2.5vw, 22px); margin-bottom: 18px; backdrop-filter: blur(8px);
+  }
+  label { display: block; font-size: 0.85rem; color: var(--muted); margin: 12px 0 6px; }
+  input[type="text"], select {
+    width: 100%; padding: 11px 12px; border-radius: 10px; border: 1px solid var(--border);
+    background: rgba(0,0,0,0.35); color: var(--text); font-size: 1rem; outline: none;
+  }
+  input:focus, select:focus { border-color: var(--accent2); }
+  .row { display: flex; gap: 12px; flex-wrap: wrap; }
+  .row > div { flex: 1 1 140px; }
+  button {
+    padding: 12px 22px; border-radius: 10px; border: none; cursor: pointer; font-size: 0.95rem; font-weight: 600;
+    background: linear-gradient(135deg, var(--accent), var(--accent2)); color: #fff;
+    transition: opacity 0.2s, transform 0.1s;
+  }
+  button:disabled { opacity: 0.45; cursor: not-allowed; }
+  button:active:not(:disabled) { transform: scale(0.98); }
+  button.ghost { background: transparent; border: 1px solid var(--border); color: var(--text); }
+  button.danger { background: linear-gradient(135deg, #7f1d1d, var(--err)); }
+  .stages { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+  .stage {
+    display: flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 999px;
+    border: 1px solid var(--border); font-size: 0.8rem; color: var(--muted);
+  }
+  .stage .dot { width: 8px; height: 8px; border-radius: 50%; background: #555; }
+  .stage.pending .dot { background: #555; }
+  .stage.running .dot { background: var(--accent2); animation: pulse 1.2s infinite; }
+  .stage.completed .dot { background: var(--ok); }
+  .stage.failed .dot { background: var(--err); }
+  .stage.skipped .dot { background: var(--warn); }
+  .stage.running { color: var(--accent2); border-color: var(--accent2); }
+  .stage.completed { color: var(--ok); }
+  .stage.failed { color: var(--err); border-color: var(--err); }
+  @keyframes pulse { 50% { opacity: 0.35; } }
+  .status-chip { display: inline-block; padding: 3px 12px; border-radius: 999px; font-size: 0.75rem; font-weight: 700; }
+  .status-queued { background: rgba(245,158,11,.15); color: var(--warn); }
+  .status-running { background: rgba(66,165,245,.15); color: var(--accent2); }
+  .status-completed { background: rgba(34,197,94,.15); color: var(--ok); }
+  .status-failed { background: rgba(239,68,68,.15); color: var(--err); }
+  .status-canceled { background: rgba(148,163,184,.15); color: #94a3b8; }
+  .job { border-inline-start: 3px solid var(--border); padding-inline-start: 14px; margin-bottom: 16px; }
+  .job.running { border-inline-start-color: var(--accent2); }
+  .job.completed { border-inline-start-color: var(--ok); }
+  .job.failed { border-inline-start-color: var(--err); }
+  .job-head { display: flex; justify-content: space-between; gap: 10px; align-items: flex-start; flex-wrap: wrap; }
+  .job-topic { font-weight: 700; font-size: 1rem; max-width: 55%; overflow-wrap: anywhere; }
+  .job-meta { color: var(--muted); font-size: 0.8rem; margin-top: 4px; }
+  .error-box {
+    background: rgba(239,68,68,.1); border: 1px solid rgba(239,68,68,.4); border-radius: 10px;
+    padding: 10px 14px; margin-top: 10px; font-size: 0.85rem; color: #fecaca; overflow-wrap: anywhere;
+  }
+  video { width: 100%; max-height: 420px; border-radius: 10px; margin-top: 12px; background: #000; }
+  .actions { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+  .hint { font-size: 0.78rem; color: var(--muted); margin-top: 6px; }
+  .unconfigured { color: var(--warn); }
+  @media (max-width: 600px) {
+    .job-topic { max-width: 100%; }
+    .row > div { flex-basis: 100%; }
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>🎬 iAnews — توليد الفيديو</h1>
+  <p class="sub">لوحة تحكم لتوليد فيديوهات الأخبار والأملاك بنقرة واحدة</p>
+
+  <!-- New job form -->
+  <div class="card" id="form-card">
+    <form id="job-form" autocomplete="off">
+      <label for="topic" data-i18n="topic">الموضوع (عربي أو إنجليزي)</label>
+      <input type="text" id="topic" name="topic" placeholder="مثال: أحدث أخبار الذكاء الاصطناعي" maxlength="500" required>
+
+      <div class="row">
+        <div>
+          <label for="language" data-i18n="lang">اللغة</label>
+          <select id="language" name="language">
+            <option value="ar" selected>العربية</option>
+            <option value="en">English</option>
+          </select>
+        </div>
+        <div>
+          <label for="duration" data-i18n="dur">المدة المستهدفة (ثانية)</label>
+          <select id="duration" name="targetDurationSec">
+            <option value="30">30</option>
+            <option value="60" selected>60</option>
+            <option value="90">90</option>
+            <option value="120">120</option>
+          </select>
+        </div>
+        <div>
+          <label for="format" data-i18n="fmt">صيغة الفيديو</label>
+          <select id="format" name="format">
+            <option value="9:16" selected>9:16 عمودي</option>
+            <option value="16:9">16:9 أفقي</option>
+            <option value="1:1">1:1 مربع</option>
+          </select>
+        </div>
+      </div>
+
+      <label style="display:flex;align-items:center;gap:8px;margin-top:14px;font-size:0.85rem;color:var(--text);cursor:pointer">
+        <input type="checkbox" id="skip-render" style="width:auto"> <span data-i18n="skip">تخطي الرندر النهائي (توليد العناصر فقط)</span>
+      </label>
+
+      <div class="actions">
+        <button type="submit" id="generate-btn" data-i18n="gen">🎬 توليد الفيديو</button>
+      </div>
+      <p class="hint" id="provider-hint"></p>
+    </form>
+
+    <div id="submit-error" class="error-box" hidden></div>
+
+    <!-- Live progress for the newest job -->
+    <div id="progress-area" hidden>
+      <div class="stages" id="progress-stages" role="status" aria-live="polite"></div>
+      <p class="hint" id="progress-note"></p>
+    </div>
+  </div>
+
+  <!-- History -->
+  <div class="card">
+    <div class="job-head" style="margin-bottom:12px">
+      <h2 style="font-size:1.05rem" data-i18n="history">سجل التوليد</h2>
+      <span class="hint" id="queue-stats"></span>
+    </div>
+    <div id="jobs-list"><p class="hint" data-i18n="loading">جارٍ التحميل…</p></div>
+  </div>
+</div>
+
+<script>
+(function () {
+  "use strict";
+  const $ = id => document.getElementById(id);
+  const STAGE_LABELS = {
+    ar: { research: "بحث", script: "سيناريو", images: "صور", voice: "تعليق صوتي", edit: "مونتاج", render: "رندر" },
+    en: { research: "Research", script: "Script", images: "Images", voice: "Voice", edit: "Edit", render: "Render" },
+  };
+  let uiLang = "ar";
+  let pollTimers = new Set();
+  let lastClientToken = null;
+
+  function api(path, opts) {
+    return fetch(path, opts).then(async res => {
+      const body = res.headers.get("content-type")?.includes("json") ? await res.json() : {};
+      if (!res.ok) throw new Error(body.error || ("HTTP " + res.status));
+      return body;
+    });
+  }
+
+  // i18n: flip UI text + direction when English is chosen
+  const I18N = {
+    topic: { ar: "الموضوع (عربي أو إنجليزي)", en: "Topic (Arabic or English)" },
+    lang: { ar: "اللغة", en: "Language" },
+    dur: { ar: "المدة المستهدفة (ثانية)", en: "Target duration (seconds)" },
+    fmt: { ar: "صيغة الفيديو", en: "Video format" },
+    gen: { ar: "🎬 توليد الفيديو", en: "🎬 Generate video" },
+    skip: { ar: "تخطي الرندر النهائي (توليد العناصر فقط)", en: "Skip final render (assets only)" },
+    history: { ar: "سجل التوليد", en: "Generation history" },
+    loading: { ar: "جارٍ التحميل…", en: "Loading…" },
+    retry: { ar: "إعادة المحاولة", en: "Retry" },
+    cancel: { ar: "إلغاء", en: "Cancel" },
+    download: { ar: "⬇ تنزيل الفيديو", en: "⬇ Download video" },
+    target: { ar: "الهدف", en: "target" },
+    actual: { ar: "الفعلي", en: "actual" },
+  };
+  function applyUiLang(lang) {
+    uiLang = lang;
+    document.documentElement.lang = lang;
+    document.documentElement.dir = lang === "ar" ? "rtl" : "ltr";
+    document.querySelectorAll("[data-i18n]").forEach(el => {
+      const t = I18N[el.dataset.i18n];
+      if (t) el.textContent = t[lang];
+    });
+    renderJobs(currentJobs);
+  }
+
+  function fmtDate(iso) {
+    try { return new Date(iso).toLocaleString(uiLang === "ar" ? "ar" : "en"); } catch { return iso; }
+  }
+  function fmtBytes(b) {
+    if (!b) return "";
+    return b > 1048576 ? (b / 1048576).toFixed(1) + " MB" : Math.round(b / 1024) + " KB";
+  }
+
+  function stagePills(job) {
+    const labels = STAGE_LABELS[uiLang];
+    const order = ["research", "script", "images", "voice", "edit", "render"];
+    return order.filter(s => job.stages[s] && job.stages[s].status !== "skipped").map(s => {
+      const st = job.stages[s].status;
+      return '<span class="stage ' + st + '"><span class="dot"></span>' + labels[s] + "</span>";
+    }).join("");
+  }
+
+  function jobCard(job) {
+    const card = document.createElement("div");
+    card.className = "job " + job.status;
+    const stages = job.stages;
+    const err = job.error ? '<div class="error-box">' + escapeHtml(job.error) + "</div>" : "";
+    const dur = job.actualDurationSec != null
+      ? ` — ${I18N.target[uiLang]}: ${job.targetDurationSec}s · ${I18N.actual[uiLang]}: ${job.actualDurationSec}s`
+      : "";
+    let actions = "";
+    if (job.status === "failed") actions += '<button class="ghost" data-act="retry">' + I18N.retry[uiLang] + "</button> ";
+    if (job.status === "queued" || job.status === "running") actions += '<button class="danger" data-act="cancel">' + I18N.cancel[uiLang] + "</button> ";
+    if (job.status === "completed" && job.output) {
+      actions += '<a href="/api/jobs/' + job.id + '/video" download><button type="button">' + I18N.download[uiLang] + "</button></a> ";
+    }
+    card.innerHTML =
+      '<div class="job-head">' +
+        '<div><div class="job-topic">' + escapeHtml(job.topic) + "</div>" +
+        '<div class="job-meta">' + fmtDate(job.createdAt) + " · " + job.language.toUpperCase() + " · " + job.format + dur + "</div></div>" +
+        '<span class="status-chip status-' + job.status + '">' + job.status + "</span>" +
+      "</div>" +
+      '<div class="stages">' + stagePills(job) + "</div>" + err +
+      '<div class="actions">' + actions + "</div>" +
+      (job.status === "completed" && job.output
+        ? '<video controls preload="metadata" src="/api/jobs/' + job.id + '/video"></video>'
+        : "");
+    card.querySelectorAll("button[data-act]").forEach(btn => {
+      btn.addEventListener("click", () => {
+        const act = btn.dataset.act;
+        api("/api/jobs/" + job.id + "/" + act, { method: "POST" })
+          .then(refreshAll)
+          .catch(e => alert(e.message));
+      });
+    });
+    return card;
+  }
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, c => ({ "&": "&", "<": "<", ">": ">", '"': """, "'": "&#39;" }[c]));
+  }
+
+  let currentJobs = [];
+  function renderJobs(jobs) {
+    currentJobs = jobs;
+    const list = $("jobs-list");
+    list.innerHTML = "";
+    if (!jobs.length) {
+      list.innerHTML = '<p class="hint">' + (uiLang === "ar" ? "لا توجد مهام بعد" : "No jobs yet") + "</p>";
+      return;
+    }
+    jobs.slice(0, 20).forEach(j => list.appendChild(jobCard(j)));
+  }
+
+  function trackLive(jobId) {
+    if (pollTimers.has(jobId)) return;
+    pollTimers.add(jobId);
+    const timer = setInterval(async () => {
+      try {
+        const { job } = await api("/api/jobs/" + jobId);
+        updateLiveProgress(job);
+        renderJobs(currentJobs);
+        if (job.status !== "running" && job.status !== "queued") {
+          clearInterval(timer);
+          pollTimers.delete(jobId);
+          refreshAll();
+        }
+      } catch { clearInterval(timer); pollTimers.delete(jobId); }
+    }, 2000);
+  }
+
+  function updateLiveProgress(job) {
+    $("progress-area").hidden = false;
+    $("progress-stages").innerHTML = stagePills(job);
+    const L = STAGE_LABELS[uiLang];
+    $("progress-note").textContent = job.stage ? (L[job.stage] + "…") : "";
+  }
+
+  async function refreshAll() {
+    try {
+      const [{ jobs }, q] = await Promise.all([api("/api/jobs"), api("/api/queue")]);
+      renderJobs(jobs);
+      $("queue-stats").textContent = uiLang === "ar"
+        ? "قيد التنفيذ: " + q.active + " · بانتظار: " + q.queued
+        : "active: " + q.active + " · queued: " + q.queued;
+      const active = jobs.find(j => j.status === "running" || j.status === "queued");
+      if (active) trackLive(active.id);
+      else $("progress-area").hidden = true;
+    } catch (e) {
+      $("jobs-list").innerHTML = '<div class="error-box">' + escapeHtml(e.message) + "</div>";
+    }
+  }
+
+  // Duplicate-submission prevention: disable + clientToken idempotency
+  $("job-form").addEventListener("submit", async ev => {
+    ev.preventDefault();
+    const btn = $("generate-btn");
+    const errBox = $("submit-error");
+    errBox.hidden = true;
+    btn.disabled = true;
+    const clientToken = "tok-" + Date.now() + "-" + Math.random().toString(36).slice(2, 10);
+    try {
+      const body = {
+        topic: $("topic").value.trim(),
+        language: $("language").value,
+        targetDurationSec: Number($("duration").value),
+        format: $("format").value,
+        skipRender: $("skip-render").checked,
+        clientToken,
+      };
+      const { job } = await api("/api/jobs", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      });
+      lastClientToken = clientToken;
+      $("topic").value = "";
+      updateLiveProgress(job);
+      trackLive(job.id);
+      refreshAll();
+    } catch (e) {
+      errBox.textContent = e.message;
+      errBox.hidden = false;
+    } finally {
+      btn.disabled = false;
+    }
+  });
+
+  $("language").addEventListener("change", e => applyUiLang(e.target.value));
+
+  // Provider hint + initial load
+  api("/api/config").then(cfg => {
+    const unconf = Object.entries(cfg.providers).filter(([, v]) => !v.configured).map(([, v]) => v.label);
+    $("provider-hint").textContent = unconf.length
+      ? (uiLang === "ar" ? "⚠️ مزودون غير مهيأين: " : "⚠️ Unconfigured providers: ") + unconf.join("، ")
+      : (uiLang === "ar" ? "جميع المزودين مهيأون ✓" : "All providers configured ✓");
+    if (!cfg.providers.researchAndScript.configured) $("provider-hint").classList.add("unconfigured");
+  }).catch(() => {});
+  refreshAll();
+})();
+</script>
+</body>
+</html>

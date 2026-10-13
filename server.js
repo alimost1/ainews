@@ -6,6 +6,17 @@ const fs = require('fs');
 const path = require('path');
 const url = require('url');
 
+// Generation dashboard API (job queue) — compiled from src/pipeline.
+let dashboardApi;
+try {
+  dashboardApi = require('./dist/pipeline/dashboard.js').handleDashboardApi;
+  require('./dist/pipeline/dashboard.js').initDashboard();
+  console.log('✅ Generation dashboard mounted at /dashboard');
+} catch (e) {
+  console.warn('⚠️ Dashboard not built (run: npx tsc -p tsconfig.dashboard.json):', e.message.split('\n')[0]);
+  dashboardApi = null;
+}
+
 const PORT = 8090;
 const PROJECT = '/root/ianews';
 
@@ -25,7 +36,11 @@ if (fs.existsSync(_envPath)) {
 }
 const FB_APP_ID = _env.FB_APP_ID || process.env.FB_APP_ID || '';
 const FB_APP_SECRET = _env.FB_APP_SECRET || process.env.FB_APP_SECRET || '';
-const FB_REDIRECT_URI = 'https://ianews.executioneveryday.com/auth/facebook/callback';
+// Public base URL of this server. Configure PUBLIC_BASE_URL for production
+// deployments; OAuth callbacks must be registered with the provider anyway.
+const PUBLIC_BASE_URL = (_env.PUBLIC_BASE_URL || process.env.PUBLIC_BASE_URL || 'http://localhost:8090').replace(/\/$/, '');
+function _httpsRedirect(path) { return (PUBLIC_BASE_URL.startsWith('https://') ? PUBLIC_BASE_URL + '/' + path : PUBLIC_BASE_URL + '/' + path); }
+const FB_REDIRECT_URI = (_env.FB_REDIRECT_URI || process.env.FB_REDIRECT_URI || _httpsRedirect('auth/facebook/callback'));
 const SCOPES = 'pages_manage_posts,pages_read_engagement,publish_video,instagram_basic,instagram_content_publish';
 
 const TOKEN_FILE = path.join(PROJECT, 'data', 'fb_tokens.json');
@@ -89,29 +104,42 @@ function httpsPost(postUrl, data, binaryFile) {
 }
 
 // ─── Facebook API helpers ───────────────────────────────────────────
+// Safe GET via https module with URL-encoded params — never shell interpolation.
+function graphRequest(url) {
+  return new Promise((resolve, reject) => {
+    const req = https.get(url, { timeout: 30000 }, (res) => {
+      let d = '';
+      res.on('data', c => d += c);
+      res.on('end', () => {
+        try { resolve(JSON.parse(d)); } catch (e) { reject(new Error('Facebook API: invalid JSON response')); }
+      });
+    });
+    req.on('error', reject);
+    req.on('timeout', () => { req.destroy(); reject(new Error('Facebook API: request timeout')); });
+  });
+}
 async function exchangeCodeForToken(code) {
   console.log('🔄 Exchanging code for token...');
-  const { execSync } = require('child_process');
-  const redirectUri = encodeURIComponent(FB_REDIRECT_URI);
-  const cmd = `curl -s "https://graph.facebook.com/v21.0/oauth/access_token?client_id=${FB_APP_ID}&client_secret=${FB_APP_SECRET}&redirect_uri=${redirectUri}&code=${code}"`;
-  const result = execSync(cmd, { encoding: 'utf8', timeout: 30000 });
-  return JSON.parse(result);
+  const params = new URLSearchParams({
+    client_id: FB_APP_ID, client_secret: FB_APP_SECRET,
+    redirect_uri: FB_REDIRECT_URI, code,
+  });
+  return graphRequest(`https://graph.facebook.com/v21.0/oauth/access_token?${params}`);
 }
 
 async function exchangeForLongLivedToken(shortLivedToken) {
   console.log('🔄 Exchanging for long-lived token...');
-  const { execSync } = require('child_process');
-  const cmd = `curl -s "https://graph.facebook.com/v21.0/oauth/access_token?grant_type=fb_exchange_token&client_id=${FB_APP_ID}&client_secret=${FB_APP_SECRET}&fb_exchange_token=${shortLivedToken}"`;
-  const result = execSync(cmd, { encoding: 'utf8', timeout: 30000 });
-  return JSON.parse(result);
+  const params = new URLSearchParams({
+    grant_type: 'fb_exchange_token', client_id: FB_APP_ID,
+    client_secret: FB_APP_SECRET, fb_exchange_token: shortLivedToken,
+  });
+  return graphRequest(`https://graph.facebook.com/v21.0/oauth/access_token?${params}`);
 }
 
 async function getUserPages(userToken) {
   console.log('📄 Fetching user pages...');
-  const { execSync } = require('child_process');
-  const cmd = `curl -s "https://graph.facebook.com/v21.0/me/accounts?fields=name,access_token,instagram_business_account&access_token=${userToken}"`;
-  const result = execSync(cmd, { encoding: 'utf8', timeout: 30000 });
-  return JSON.parse(result);
+  return graphRequest('https://graph.facebook.com/v21.0/me/accounts' +
+    '?fields=name,access_token,instagram_business_account&access_token=' + encodeURIComponent(userToken));
 }
 
 async function switchToPage(userToken, pageId) {
@@ -180,13 +208,27 @@ const server = http.createServer(async (req, res) => {
   console.log(`${req.method} ${pathname}`);
 
   if (pathname === '/auth/facebook') {
-    res.writeHead(302, { Location: `https://www.facebook.com/v21.0/dialog/oauth?client_id=${FB_APP_ID}&redirect_uri=${encodeURIComponent(FB_REDIRECT_URI)}&scope=${encodeURIComponent(SCOPES)}&auth_type=rerequest` });
+    // CSRF protection: random state cookie, verified on callback
+    const crypto = require('crypto');
+    const fbState = crypto.randomBytes(16).toString('hex');
+    res.writeHead(302, {
+      'Set-Cookie': `ianews_fb_state=${fbState}; Path=/auth/facebook; HttpOnly; Max-Age=600; SameSite=Lax`,
+      Location: `https://www.facebook.com/v21.0/dialog/oauth?client_id=${encodeURIComponent(FB_APP_ID)}&redirect_uri=${encodeURIComponent(FB_REDIRECT_URI)}&scope=${encodeURIComponent(SCOPES)}&state=${fbState}&auth_type=rerequest`,
+    });
     res.end();
     return;
   }
 
   if (pathname === '/auth/facebook/callback') {
     const code = parsed.query.code;
+    const fbState = parsed.query.state;
+    const cookieHeader = String(req.headers.cookie || '');
+    const stateMatch = cookieHeader.match(/ianews_fb_state=([a-f0-9]{32})/);
+    if (!fbState || !stateMatch || stateMatch[1] !== fbState) {
+      res.writeHead(400, { 'Content-Type': 'text/html; charset=utf-8' });
+      res.end('<h1>Invalid OAuth state — restart the connection flow.</h1>');
+      return;
+    }
     const error = parsed.query.error;
     const errorReason = parsed.query.error_reason;
     const errorDesc = parsed.query.error_description;
@@ -194,7 +236,7 @@ const server = http.createServer(async (req, res) => {
     if (error) { 
       console.log('FB OAuth error:', error, errorReason, errorDesc);
       res.writeHead(400, { 'Content-Type': 'text/html; charset=utf-8' }); 
-      res.end(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Auth Error</title><style>body{font-family:Arial;background:#0f0c29;color:#fff;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0}.card{background:rgba(255,255,255,0.1);padding:40px;border-radius:16px;text-align:center;max-width:500px}h1{color:#ef4444}p{color:#aaa}</style></head><body><div class="card"><h1>❌ Facebook Error</h1><p>${errorDesc || errorReason || error}</p><p style="margin-top:20px;font-size:0.9em">This often happens if the auth link expired. Please try again.</p><a href="https://ianews.executioneveryday.com" style="display:inline-block;margin-top:20px;padding:12px 30px;background:linear-gradient(135deg,#1877f2,#42a5f5);color:#fff;text-decoration:none;border-radius:25px">← Try Again</a></div></body></html>`); 
+      res.end(`<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Auth Error</title><style>body{font-family:Arial;background:#0f0c29;color:#fff;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0}.card{background:rgba(255,255,255,0.1);padding:40px;border-radius:16px;text-align:center;max-width:500px}h1{color:#ef4444}p{color:#aaa}</style></head><body><div class="card"><h1>❌ Facebook Error</h1><p>${errorDesc || errorReason || error}</p><p style="margin-top:20px;font-size:0.9em">This often happens if the auth link expired. Please try again.</p><a href="${PUBLIC_BASE_URL}" style="display:inline-block;margin-top:20px;padding:12px 30px;background:linear-gradient(135deg,#1877f2,#42a5f5);color:#fff;text-decoration:none;border-radius:25px">← Try Again</a></div></body></html>`); 
       return; 
     }
     if (!code) { res.writeHead(400, { 'Content-Type': 'text/html' }); res.end('<h1>❌ No code</h1>'); return; }
@@ -236,7 +278,7 @@ const server = http.createServer(async (req, res) => {
       ).join('');
 
       res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-      res.end(`<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8"><title>✅ Connected</title><style>body{font-family:Arial;background:#0f0c29;color:#fff;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0}.card{background:rgba(255,255,255,0.1);padding:40px;border-radius:16px;text-align:center;max-width:500px}h1{color:#4ade80}select{background:#1a1a2e;color:#fff;border:1px solid #333;padding:10px 15px;border-radius:8px;font-size:1em;width:100%;margin:15px 0}.btn{display:inline-block;margin-top:20px;padding:12px 30px;background:linear-gradient(135deg,#1877f2,#42a5f5);color:#fff;text-decoration:none;border-radius:25px;border:none;cursor:pointer;font-size:1em}</style></head><body><div class="card"><h1>✅ تم الربط بنجاح!</h1><p>Select the page to post to:</p><form action="/auth/facebook/switch" method="POST" id="switchForm"><select name="pageId">${pageOptions}</select><br><button type="submit" class="btn">✅ Confirm Page</button></form><br><a href="https://ianews.executioneveryday.com" class="btn" style="background:#444">← Back</a></div><script>document.getElementById('switchForm').addEventListener('submit',function(e){e.preventDefault();const fd=new FormData(this);fetch('/auth/facebook/switch',{method:'POST',body:fd}).then(r=>r.json()).then(d=>{if(d.success){window.location.href='https://ianews.executioneveryday.com';}else{alert('Error: '+(d.error||'Unknown'))}})});</script></body></html>`);
+      res.end(`<!DOCTYPE html><html lang="ar" dir="rtl"><head><meta charset="UTF-8"><title>✅ Connected</title><style>body{font-family:Arial;background:#0f0c29;color:#fff;display:flex;align-items:center;justify-content:center;min-height:100vh;margin:0}.card{background:rgba(255,255,255,0.1);padding:40px;border-radius:16px;text-align:center;max-width:500px}h1{color:#4ade80}select{background:#1a1a2e;color:#fff;border:1px solid #333;padding:10px 15px;border-radius:8px;font-size:1em;width:100%;margin:15px 0}.btn{display:inline-block;margin-top:20px;padding:12px 30px;background:linear-gradient(135deg,#1877f2,#42a5f5);color:#fff;text-decoration:none;border-radius:25px;border:none;cursor:pointer;font-size:1em}</style></head><body><div class="card"><h1>✅ تم الربط بنجاح!</h1><p>Select the page to post to:</p><form action="/auth/facebook/switch" method="POST" id="switchForm"><select name="pageId">${pageOptions}</select><br><button type="submit" class="btn">✅ Confirm Page</button></form><br><a href="${PUBLIC_BASE_URL}" class="btn" style="background:#444">← Back</a></div><script>document.getElementById('switchForm').addEventListener('submit',function(e){e.preventDefault();const fd=new FormData(this);fetch('/auth/facebook/switch',{method:'POST',body:fd}).then(r=>r.json()).then(d=>{if(d.success){window.location.href='dashboard';}else{alert('Error: '+(d.error||'Unknown'))}})});</script></body></html>`);
     } catch (err) {
       console.error('❌', err.message);
       res.writeHead(500, { 'Content-Type': 'text/html; charset=utf-8' });
@@ -248,7 +290,7 @@ const server = http.createServer(async (req, res) => {
   // Google OAuth - generate auth URL
   if (pathname === '/auth/google') {
     const GCLIENT_ID = _env.GOOGLE_CLIENT_ID || process.env.GOOGLE_CLIENT_ID || '';
-    const GREDIRECT = 'https://ianews.executioneveryday.com/auth/google/callback';
+    const GREDIRECT = _httpsRedirect('auth/google/callback');
     const SCOPE = 'https://www.googleapis.com/auth/youtube.upload';
     const authUrl = `https://accounts.google.com/o/oauth2/auth?client_id=${GCLIENT_ID}&redirect_uri=${encodeURIComponent(GREDIRECT)}&response_type=code&scope=${encodeURIComponent(SCOPE)}&access_type=offline&prompt=consent&include_granted_scopes=true`;
     res.writeHead(302, { Location: authUrl });
@@ -274,13 +316,26 @@ const server = http.createServer(async (req, res) => {
 
     try {
       console.log('Google OAuth code received, exchanging...');
-      const { execSync } = require('child_process');
       const GCLIENT_ID = _env.GOOGLE_CLIENT_ID || process.env.GOOGLE_CLIENT_ID || '';
       const GCLIENT_SECRET = _env.GOOGLE_CLIENT_SECRET || process.env.GOOGLE_CLIENT_SECRET || '';
-      const GREDIRECT = 'https://ianews.executioneveryday.com/auth/google/callback';
-      const cmd = `curl -s -X POST https://oauth2.googleapis.com/token -d "code=${code}&client_id=${GCLIENT_ID}&client_secret=${GCLIENT_SECRET}&redirect_uri=${encodeURIComponent(GREDIRECT)}&grant_type=authorization_code"`;
-      const result = execSync(cmd, { encoding: 'utf8', timeout: 30000 });
-      const tokenData = JSON.parse(result);
+      const GREDIRECT = _httpsRedirect('auth/google/callback');
+      const tokenData = await new Promise((resolve, reject) => {
+        const body = new URLSearchParams({
+          code: String(code || ''), client_id: GCLIENT_ID, client_secret: GCLIENT_SECRET,
+          redirect_uri: GREDIRECT, grant_type: 'authorization_code',
+        }).toString();
+        const u = new URL('https://oauth2.googleapis.com/token');
+        const req = https.request({ hostname: u.hostname, path: u.pathname, method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'Content-Length': Buffer.byteLength(body) },
+          timeout: 30000 }, (res) => {
+          let d = '';
+          res.on('data', c => d += c);
+          res.on('end', () => { try { resolve(JSON.parse(d)); } catch (e) { reject(new Error('Google OAuth: invalid JSON')); } });
+        });
+        req.on('error', reject);
+        req.on('timeout', () => { req.destroy(); reject(new Error('Google OAuth: timeout')); });
+        req.write(body); req.end();
+      });
 
       if (tokenData.error) {
         console.log('Token error:', tokenData.error);
@@ -410,12 +465,8 @@ const server = http.createServer(async (req, res) => {
     let igAccount = null;
     if (tokens.pageId && tokens.pageToken) {
       try {
-        const { execSync } = require('child_process');
-        const r = execSync(
-          `curl -s "https://graph.facebook.com/v21.0/${tokens.pageId}?fields=instagram_business_account&access_token=${tokens.pageToken}"`,
-          { encoding: 'utf8', timeout: 10000 }
-        );
-        const d = JSON.parse(r);
+        const d = await graphRequest('https://graph.facebook.com/v21.0/' + encodeURIComponent(tokens.pageId) +
+          '?fields=instagram_business_account&access_token=' + encodeURIComponent(tokens.pageToken));
         if (d.instagram_business_account) igAccount = d.instagram_business_account.id;
       } catch (e) {}
     }
@@ -445,6 +496,29 @@ const server = http.createServer(async (req, res) => {
   }
 
 
+  // ─── Generation dashboard ──────────────────────────────────────────
+  if (pathname === '/dashboard' && req.method === 'GET') {
+    const html = fs.readFileSync(path.join(PROJECT, 'public', 'dashboard.html'));
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
+    res.end(html);
+    return;
+  }
+  if ((pathname.startsWith('/api/jobs') || pathname === '/api/config' || pathname === '/api/queue')) {
+    if (!dashboardApi) {
+      res.writeHead(503, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Dashboard not built. Run: npm run build:dashboard' }));
+      return;
+    }
+    try {
+      const handled = await dashboardApi(req, res);
+      if (handled) return;
+    } catch (e) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Dashboard error' }));
+      return;
+    }
+  }
+
   // ─── Static media serving (for Higgsfield audio_url/image_url inputs) ─
   // /media/<file> serves /root/ainews/public/media/<file>
   if (pathname.startsWith('/media/')) {
@@ -467,7 +541,7 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  res.writeHead(302, { Location: 'https://ianews.executioneveryday.com' });
+  res.writeHead(302, { Location: PUBLIC_BASE_URL + '/dashboard' });
   res.end();
 });
 

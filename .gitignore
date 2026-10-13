@@ -33,3 +33,9 @@ Thumbs.db
 
 # Runtime pipeline progress
 data/pipeline_status.json
+
+# Compiled dashboard
+/dist/
+
+# Generated job workspaces
+data/jobs/

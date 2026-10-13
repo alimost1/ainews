@@ -128,3 +128,62 @@ npm test
 
 Tests cover command parsing, Arabic/quoted topics, invalid options, scene timing,
 and generated composition behavior without calling paid generation services.
+
+## Generation Dashboard
+
+A web dashboard for daily video production runs at **`/dashboard`** on the server.
+
+```bash
+# Build the dashboard + pipeline once
+npm run build:dashboard
+
+# Start the server (dashboard + Facebook/YouTube publishing)
+npm run start:server
+# → http://localhost:8090/dashboard
+```
+
+Features:
+- Arabic/English topics with RTL Arabic UI
+- Language, target duration (9–300s) and format (9:16 / 16:9 / 1:1) selection
+- Live per-stage progress (research → script → images → voice → edit → render)
+- Duplicate-submission prevention (button lock + clientToken idempotency)
+- Failure messages with one-click retry; cancel while queued/running
+- Completed video preview and download; generation history with status and dates
+- Target duration shown separately from the actual rendered duration
+
+### Job management
+
+Every generation is a job with a unique ID and an **isolated workspace** at
+`data/jobs/<id>/` — its own `script.json`, `images/`, `audio/`, and render
+assets. Concurrent jobs can never overwrite each other's files.
+
+- Jobs persist in `data/jobs/index.json` (atomic writes) and **survive server
+  restarts**: interrupted stages are marked failed and the job is requeued;
+  completed stages and their assets are reused on retry.
+- A bounded queue (default concurrency 1, `IANEWS_QUEUE_CONCURRENCY`) matches
+  the heavy image/TTS/render stages.
+- Each stage subprocess has a hard timeout (`IANEWS_STAGE_TIMEOUT_MS`).
+- Real provider request IDs (OpenRouter) are recorded per stage; none are invented.
+
+### Dashboard API
+
+| Method | Path | Description |
+|---|---|---|
+| POST | `/api/jobs` | Create a generation job (validated, idempotent via `clientToken`) |
+| GET | `/api/jobs` | Job history |
+| GET | `/api/jobs/:id` | Job detail with stage statuses |
+| POST | `/api/jobs/:id/retry` | Retry failed stages (keeps completed assets) |
+| POST | `/api/jobs/:id/cancel` | Cancel a queued/running job |
+| GET | `/api/jobs/:id/video` | Download the completed MP4 |
+| GET | `/api/config` | Supported providers, models, and limits |
+| GET | `/api/queue` | Queue stats |
+
+### Security notes
+
+- All Facebook/Google OAuth token exchanges use the `https` module with
+  URL-encoded parameters — no shell interpolation of credentials.
+- Facebook OAuth validates a signed `state` cookie (CSRF protection).
+- Request bodies are size-limited (32 KB) and validated before job creation.
+- Video downloads are restricted to the job's own output directory.
+- `PUBLIC_BASE_URL` replaces the previously hardcoded deployment domain; OAuth
+  redirects derive from it.
