@@ -52,8 +52,11 @@ async function executePropJob(jobId: string): Promise<void> {
   let job = store.get(jobId);
   if (!job || job.status === "canceled") return;
   const { keyId, keySecret, elevenKey } = hfKeys();
-  if (!keyId || !keySecret) { store.update(jobId, { status: "failed", error: "Higgsfield lip-sync not configured: set HF_API_KEY_ID and HF_API_KEY_SECRET (open.higgsfield.ai). The avatar stage uses the verified wan/v2.7/image-to-video endpoint with image_url + audio_url." }); return; }
-  if (!elevenKey) { store.update(jobId, { status: "failed", error: "ElevenLabs not configured: set ELEVENLABS_API_KEY for narration voice." }); return; }
+  // Per-stage configuration gates: stages whose provider is unconfigured fail
+  // with an explicit message; stages that CAN run still run (so partial
+  // setups produce everything they can, and retries only redo what's missing).
+  const requireEleven = () => { if (!elevenKey) throw new Error("ElevenLabs not configured: set ELEVENLABS_API_KEY for narration voice."); };
+  const requireHf = () => { if (!keyId || !keySecret) throw new Error("Higgsfield lip-sync not configured: set HF_API_KEY_ID and HF_API_KEY_SECRET (open.higgsfield.ai). The avatar stage uses the verified wan/v2.7/image-to-video endpoint with image_url + audio_url."); };
 
   const dir = propJobDir(jobId);
   const renderDir = path.join(dir, "render");
@@ -87,6 +90,7 @@ async function executePropJob(jobId: string): Promise<void> {
     if (!segments) throw new Error("No segments");
 
     // ── voice: ElevenLabs per segment, ffprobe-measured ─────────────
+    requireEleven();
     const audioDir = path.join(pub, "audio");
     fs.mkdirSync(audioDir, { recursive: true });
     const plan: SegmentPlan[] = [];
@@ -127,6 +131,7 @@ async function executePropJob(jobId: string): Promise<void> {
     fs.mkdirSync(avatarDir, { recursive: true });
     const presenterPath = path.join(dir, "presenter.png");
     await stageRun("avatar", async () => {
+      requireHf();
       const j = store.get(jobId)!;
       if (!fs.existsSync(presenterPath)) {
         // Uploaded portrait was stored server-side at draft time

@@ -42,6 +42,9 @@ if (fs.existsSync(_envPath)) {
     if (_line && !_line.startsWith('#') && _line.includes('=')) {
       const [_k, ..._v] = _line.split('=');
       _env[_k.trim()] = _v.join('=').trim();
+      // Expose pipeline-relevant variables to process.env so compiled modules
+      // (ElevenLabs/Higgsfield checks) see them without a separate env loader.
+      if (_k.trim() && !process.env[_k.trim()]) process.env[_k.trim()] = _v.join('=').trim();
     }
   }
 }
