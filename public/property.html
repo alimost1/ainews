@@ -1,0 +1,328 @@
+<!DOCTYPE html>
+<html lang="fr" dir="ltr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>iAnews — Présentation Avatar Immobilier</title>
+<style>
+  :root { --bg:#0f0c29; --bg2:#1a1633; --card:rgba(255,255,255,.06); --border:rgba(255,255,255,.12);
+    --text:#eef0ff; --muted:#9aa0c3; --accent:#1f4abf; --accent2:#42a5f5; --ok:#22c55e; --warn:#f59e0b; --err:#ef4444; }
+  * { box-sizing:border-box; margin:0; }
+  body { font-family:"Segoe UI","Noto Sans Arabic",Tahoma,sans-serif; color:var(--text);
+    background:linear-gradient(135deg,var(--bg),var(--bg2) 60%,#24243e); min-height:100vh; padding:clamp(12px,3vw,32px); }
+  .wrap { max-width:980px; margin:0 auto; }
+  h1 { font-size:clamp(1.3rem,3.5vw,1.9rem); margin-bottom:4px; }
+  .sub { color:var(--muted); font-size:.9rem; margin-bottom:18px; }
+  .card { background:var(--card); border:1px solid var(--border); border-radius:14px;
+    padding:clamp(14px,2.5vw,22px); margin-bottom:16px; backdrop-filter:blur(8px); }
+  label { display:block; font-size:.85rem; color:var(--muted); margin:12px 0 6px; }
+  input[type=text], input[type=url], textarea, select { width:100%; padding:11px 12px; border-radius:10px;
+    border:1px solid var(--border); background:rgba(0,0,0,.35); color:var(--text); font-size:1rem; outline:none; }
+  input:focus, textarea:focus, select:focus { border-color:var(--accent2); }
+  textarea { min-height:120px; resize:vertical; }
+  button { padding:12px 22px; border-radius:10px; border:none; cursor:pointer; font-size:.95rem; font-weight:600;
+    background:linear-gradient(135deg,var(--accent),var(--accent2)); color:#fff; }
+  button:disabled { opacity:.45; cursor:not-allowed; }
+  button.ghost { background:transparent; border:1px solid var(--border); color:var(--text); }
+  .row { display:flex; gap:12px; flex-wrap:wrap; } .row>div { flex:1 1 150px; }
+  .errbox { background:rgba(239,68,68,.1); border:1px solid rgba(239,68,68,.4); border-radius:10px;
+    padding:10px 14px; margin-top:10px; font-size:.85rem; color:#fecaca; overflow-wrap:anywhere; }
+  .okbox { background:rgba(34,197,94,.1); border:1px solid rgba(34,197,94,.4); border-radius:10px;
+    padding:10px 14px; margin-top:10px; font-size:.85rem; color:#86efac; }
+  .gallery { display:grid; grid-template-columns:repeat(auto-fill,minmax(110px,1fr)); gap:8px; margin-top:10px; }
+  .gallery label.ph { position:relative; display:block; aspect-ratio:3/4; border-radius:10px; overflow:hidden;
+    border:2px solid transparent; cursor:pointer; background:#000; }
+  .gallery label.ph.selected { border-color:var(--accent2); }
+  .gallery img { width:100%; height:100%; object-fit:cover; display:block; }
+  .gallery .ord { position:absolute; top:6px; inset-inline-start:6px; background:rgba(31,74,191,.9);
+    color:#fff; font-size:.7rem; font-weight:700; border-radius:999px; padding:2px 8px; }
+  .stagebar { display:flex; flex-wrap:wrap; gap:8px; margin-top:12px; }
+  .st { padding:6px 12px; border-radius:999px; border:1px solid var(--border); font-size:.78rem; color:var(--muted); }
+  .st .dot { display:inline-block; width:8px; height:8px; border-radius:50%; background:#555; margin-inline-end:6px; }
+  .st.running { color:var(--accent2); border-color:var(--accent2); } .st.running .dot { background:var(--accent2); animation:pulse 1.2s infinite; }
+  .st.completed { color:var(--ok); } .st.completed .dot { background:var(--ok); }
+  .st.failed { color:var(--err); border-color:var(--err); } .st.failed .dot { background:var(--err); }
+  .st.pending .dot { background:#555; }
+  @keyframes pulse { 50% { opacity:.35; } }
+  .chip { display:inline-block; padding:3px 12px; border-radius:999px; font-size:.75rem; font-weight:700; }
+  .chip.queued { background:rgba(245,158,11,.15); color:var(--warn); }
+  .chip.running { background:rgba(66,165,245,.15); color:var(--accent2); }
+  .chip.completed { background:rgba(34,197,94,.15); color:var(--ok); }
+  .chip.failed { background:rgba(239,68,68,.15); color:var(--err); }
+  .chip.draft { background:rgba(148,163,184,.15); color:#94a3b8; }
+  .job { border-inline-start:3px solid var(--border); padding-inline-start:14px; margin-bottom:14px; }
+  video { width:100%; max-height:420px; border-radius:10px; margin-top:10px; background:#000; }
+  .warn-note { font-size:.78rem; color:var(--warn); margin-top:6px; }
+  .hidden { display:none; }
+  .two-col { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+  @media (max-width:700px){ .two-col { grid-template-columns:1fr; } }
+  .avatar-preview { width:120px; height:150px; object-fit:cover; border-radius:12px; border:1px solid var(--border); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>🏠 Présentation Avatar Immobilier</h1>
+  <p class="sub">Collez l'URL d'une annonce → vérifiez les détails → générez une vidéo avec avatar présentateur et photos réelles.</p>
+
+  <!-- STEP 1: URL -->
+  <div class="card">
+    <label for="url">URL de l'annonce</label>
+    <input type="url" id="url" placeholder="https://www.promoimmomarrakech.com/produit/..." />
+    <div class="row" style="margin-top:12px">
+      <div><button id="extract-btn">🔍 Extraire les détails</button></div>
+      <div style="flex:0 0 auto; align-self:center"><span id="cap-note" class="warn-note"></span></div>
+    </div>
+    <div id="extract-error" class="errbox hidden"></div>
+  </div>
+
+  <!-- STEP 2: Review -->
+  <div class="card hidden" id="review-card">
+    <h2 style="font-size:1.05rem">Vérifiez et corrigez les informations</h2>
+    <label>Source</label><input type="text" id="f-source" readonly style="opacity:.7">
+    <div class="two-col">
+      <div>
+        <label>Titre</label><input type="text" id="f-title">
+        <label>Référence</label><input type="text" id="f-ref">
+        <label>Localisation</label><input type="text" id="f-loc">
+        <label>Prix / devise</label>
+        <div class="row"><div><input type="text" id="f-price"></div><div><input type="text" id="f-cur" placeholder="MAD"></div></div>
+        <label>Chambres</label><input type="text" id="f-beds">
+        <label>Salles de bain</label><input type="text" id="f-baths">
+      </div>
+      <div>
+        <label>Surface terrain (m²)</label><input type="text" id="f-land">
+        <label>Surface construite (m²) <span class="warn-note">(laisser vide si absent — jamais déduit)</span></label><input type="text" id="f-built">
+        <label>Nom de l'agence (branding)</label><input type="text" id="f-agency">
+        <label>Langue de la narration</label>
+        <select id="f-lang"><option value="fr" selected>Français</option><option value="ar">العربية</option><option value="en">English</option></select>
+        <label>Voix ElevenLabs</label>
+        <input type="text" id="f-voice" placeholder="ID de voix (défaut: multilingue)">
+      </div>
+    </div>
+    <label>Description (extraite)</label><textarea id="f-desc"></textarea>
+    <label>Narration (éditable)</label><textarea id="f-narr" placeholder="Le script sera proposé à partir de la description. Vous pouvez le modifier librement."></textarea>
+
+    <h3 style="font-size:.95rem;margin-top:16px">Photos de l'annonce <span class="warn-note">(cliquez pour sélectionner · l'ordre de sélection = ordre d'affichage)</span></h3>
+    <div class="gallery" id="gallery"></div>
+
+    <h3 style="font-size:.95rem;margin-top:16px">Avatar présentateur</h3>
+    <div class="row" style="align-items:center">
+      <div><label>Uploader un portrait (PNG/JPG, max 2 Mo)</label><input type="file" id="avatar-file" accept="image/png,image/jpeg"></div>
+      <div><img id="avatar-preview" class="avatar-preview hidden" alt=""></div>
+    </div>
+
+    <div id="gen-error" class="errbox hidden"></div>
+    <div id="cost-note" class="warn-note"></div>
+    <div style="margin-top:14px" class="row">
+      <div><button id="generate-btn">🎬 Générer la vidéo</button></div>
+      <div><button id="suggest-narr-btn" class="ghost">✍️ Proposer une narration</button></div>
+    </div>
+    <div id="stagebar" class="stagebar hidden"></div>
+  </div>
+
+  <!-- History -->
+  <div class="card">
+    <h2 style="font-size:1.05rem;margin-bottom:10px">Historique</h2>
+    <div id="jobs"><p class="warn-note">Chargement…</p></div>
+  </div>
+</div>
+
+<script>
+(function(){
+"use strict";
+const $ = id => document.getElementById(id);
+const esc = s => String(s).replace(/[&<>"']/g, c => ({"&":"&","<":"<",">":">",'"':""","'":"&#39;"}[c]));
+let extracted = null, selectedPhotos = [], avatarId = null, currentJobId = null, pollTimer = null;
+
+async function api(path, opts){ const r = await fetch(path, opts); const b = await r.json().catch(()=>({}));
+  if (!r.ok) throw new Error(b.error || ("HTTP "+r.status)); return b; }
+
+const STAGE_LBL = { fr:{extract:"Extraction",script:"Script",voice:"Voix",avatar:"Avatar",compose:"Composition",render:"Rendu"},
+  ar:{extract:"استخراج",script:"سيناريو",voice:"صوت",avatar:"الصورة المتحركة",compose:"تركيب",render:"إخراج"},
+  en:{extract:"Extract",script:"Script",voice:"Voice",avatar:"Avatar",compose:"Compose",render:"Render"} };
+function lang(){ return $("f-lang").value || "fr"; }
+
+// ── Capability banner
+api("/api/property/config").then(c => {
+  const missing = [...c.lipSync.missing, ...c.tts.missing];
+  $("cap-note").textContent = missing.length
+    ? "⚠️ Manque: " + missing.join(", ") + " — la génération nécessite ces clés."
+    : "Lip-sync " + c.lipSync.model + " + ElevenLabs prêts ✓";
+  if (!c.lipSync.supported) $("cap-note").textContent += " (" + c.lipSync.verifiedEndpoint + ")";
+}).catch(()=>{});
+
+// ── Step 1: extract
+$("extract-btn").addEventListener("click", async () => {
+  const btn = $("extract-btn"); btn.disabled = true;
+  $("extract-error").classList.add("hidden");
+  try {
+    const { listing } = await api("/api/property/extract", { method:"POST",
+      headers:{"Content-Type":"application/json"}, body: JSON.stringify({url: $("url").value.trim()}) });
+    extracted = listing;
+    fillForm(listing);
+    $("review-card").classList.remove("hidden");
+    suggestNarration(false);
+  } catch (e) {
+    const box = $("extract-error"); box.textContent = e.message + " — vous pouvez saisir les détails manuellement ci-dessous.";
+    box.classList.remove("hidden");
+    extracted = { images: [] }; fillForm(extracted); $("review-card").classList.remove("hidden");
+  } finally { btn.disabled = false; }
+});
+
+function fillForm(l){
+  $("f-source").value = l.sourceUrl || $("url").value;
+  $("f-title").value = l.title || ""; $("f-ref").value = l.reference || "";
+  $("f-loc").value = l.location || "";
+  $("f-price").value = l.price != null ? l.price : ""; $("f-cur").value = l.priceCurrency || "";
+  $("f-beds").value = l.bedrooms ?? ""; $("f-baths").value = l.bathrooms ?? "";
+  $("f-land").value = l.landAreaM2 ?? ""; $("f-built").value = l.builtAreaM2 ?? "";
+  $("f-agency").value = l.agency || ""; // source agency, NEVER forced to Galiska
+  $("f-desc").value = l.description || "";
+  selectedPhotos = [];
+  const g = $("gallery"); g.innerHTML = "";
+  (l.images || []).forEach((src, i) => {
+    const lab = document.createElement("label"); lab.className = "ph";
+    const img = document.createElement("img"); img.src = src; img.loading = "lazy"; img.alt = "photo " + (i+1);
+    const ord = document.createElement("span"); ord.className = "ord"; ord.textContent = i+1; ord.hidden = true;
+    lab.append(img, ord);
+    lab.addEventListener("click", ev => { ev.preventDefault();
+      const idx = selectedPhotos.indexOf(src);
+      if (idx >= 0) { selectedPhotos.splice(idx,1); lab.classList.remove("selected"); }
+      else { selectedPhotos.push(src); lab.classList.add("selected"); }
+      [...g.children].forEach(el => { const s = selectedPhotos.indexOf(el.querySelector("img").src);
+        el.querySelector(".ord").hidden = s < 0; el.querySelector(".ord").textContent = s+1; });
+    });
+    g.appendChild(lab);
+  });
+}
+
+function factsSentence(){
+  const bits = [];
+  if ($("f-title").value) bits.push($("f-title").value);
+  if ($("f-loc").value) bits.push("située à " + $("f-loc").value);
+  if ($("f-land").value) bits.push("sur un terrain de " + $("f-land").value + " m²");
+  if ($("f-beds").value) bits.push($("f-beds").value + " chambres");
+  if ($("f-baths").value) bits.push($("f-baths").value + " salles de bain");
+  if ($("f-price").value) bits.push("au prix de " + Number($("f-price").value).toLocaleString("fr-FR") + " " + ($("f-cur").value || "MAD"));
+  return bits.join(", ");
+}
+
+// Local draft narration from reviewed facts (no LLM call, no credits)
+function suggestNarration(fill = true){
+  const n = $("f-narr");
+  const base = factsSentence();
+  const agency = $("f-agency").value || "l'agence";
+  const text = base
+    ? `${base}. ${$("f-desc").value ? $("f-desc").value.split(/(?<=\.)\s+/).slice(0,3).join(" ") + " " : ""}` +
+      `Voici une opportunité à découvrir en images. ${agency} vous invite à la visiter : contactez-nous pour plus d'informations ou pour organiser une visite.`
+    : "";
+  if (fill) n.value = text.trim().slice(0, 1800);
+}
+$("suggest-narr-btn").addEventListener("click", () => suggestNarration(true));
+$("f-lang").addEventListener("change", () => {
+  const isAr = lang() === "ar";
+  document.documentElement.lang = isAr ? "ar" : lang();
+  document.documentElement.dir = isAr ? "rtl" : "ltr";
+});
+
+// ── Avatar upload
+$("avatar-file").addEventListener("change", async ev => {
+  const f = ev.target.files[0]; if (!f) return;
+  if (f.size > 2*1024*1024) { alert("Portrait trop volumineux (max 2 Mo)"); return; }
+  const buf = await f.arrayBuffer();
+  const { avatarId: id } = await api("/api/property/upload-avatar", { method:"POST",
+    headers:{"Content-Type":"application/octet-stream"}, body: buf });
+  avatarId = id;
+  const prev = $("avatar-preview"); prev.src = URL.createObjectURL(f); prev.classList.remove("hidden");
+});
+
+// ── Step 2: create draft + generate
+$("generate-btn").addEventListener("click", async () => {
+  const btn = $("generate-btn"); btn.disabled = true;
+  $("gen-error").classList.add("hidden");
+  const clientToken = "prop-" + Date.now() + "-" + Math.random().toString(36).slice(2,8);
+  try {
+    const body = {
+      clientToken, sourceUrl: $("f-source").value,
+      language: lang(), voiceId: $("f-voice").value.trim(),
+      narration: $("f-narr").value.trim(),
+      avatarId: avatarId || undefined,
+      listing: {
+        title: $("f-title").value, reference: $("f-ref").value, location: $("f-loc").value,
+        price: $("f-price").value ? Number($("f-price").value) : null, priceCurrency: $("f-cur").value || null,
+        landAreaM2: $("f-land").value ? Number($("f-land").value) : null,
+        builtAreaM2: $("f-built").value ? Number($("f-built").value) : null,
+        bedrooms: $("f-beds").value ? Number($("f-beds").value) : null,
+        bathrooms: $("f-baths").value ? Number($("f-baths").value) : null,
+        description: $("f-desc").value, images: selectedPhotos,
+      },
+      branding: { agencyName: $("f-agency").value, contactLine: "" },
+    };
+    const { job } = await api("/api/property/jobs", { method:"POST",
+      headers:{"Content-Type":"application/json"}, body: JSON.stringify(body) });
+    const cfg = await api("/api/property/config");
+    if (!confirm("Confirmez la génération ?\n\nModèle avatar: " + cfg.lipSync.model +
+      "\nVoix: ElevenLabs " + (body.voiceId || cfg.tts.defaultVoiceId) +
+      "\nDurée cible: 45-60s\nCoût estimé: " + cfg.costEstimate.higgsfieldUsd + " (Higgsfield) + " +
+      cfg.costEstimate.elevenLabsUsd + " (ElevenLabs)\n" + cfg.costEstimate.note)) {
+      btn.disabled = false; return;
+    }
+    currentJobId = job.id;
+    await api("/api/property/jobs/" + job.id + "/generate", { method:"POST" });
+    showStages(job);
+    poll(job.id);
+  } catch (e) {
+    const box = $("gen-error"); box.textContent = e.message; box.classList.remove("hidden");
+  } finally { btn.disabled = false; }
+});
+
+function showStages(job){
+  const bar = $("stagebar"); bar.classList.remove("hidden");
+  const L = STAGE_LBL[lang()] || STAGE_LBL.fr;
+  bar.innerHTML = Object.entries(job.stages).map(([k,v]) =>
+    `<span class="st ${v.status}"><span class="dot"></span>${L[k] || k}</span>`).join("");
+}
+
+function poll(id){
+  if (pollTimer) clearInterval(pollTimer);
+  pollTimer = setInterval(async () => {
+    try {
+      const { job } = await api("/api/property/jobs/" + id);
+      showStages(job);
+      renderJobs();
+      if (!["queued","running"].includes(job.status)) { clearInterval(pollTimer); pollTimer = null; }
+    } catch { clearInterval(pollTimer); pollTimer = null; }
+  }, 2500);
+}
+
+function renderJobs(){
+  api("/api/property/jobs").then(({ jobs }) => {
+    const el = $("jobs"); el.innerHTML = "";
+    if (!jobs.length) { el.innerHTML = '<p class="warn-note">Aucune génération pour le moment.</p>'; return; }
+    jobs.slice(0,10).forEach(j => {
+      const d = document.createElement("div"); d.className = "job";
+      const acts = [];
+      if (j.status === "draft") acts.push(`<button data-a="generate" data-id="${j.id}">Générer</button> `);
+      if (["queued","running"].includes(j.status)) acts.push(`<button class="ghost" data-a="cancel" data-id="${j.id}">Annuler</button> `);
+      if (j.status === "completed" && j.output) acts.push(`<a href="/api/property/jobs/${j.id}/video" download><button type="button">⬇ Télécharger</button></a> `);
+      d.innerHTML = `<div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap">
+        <div><strong>${esc((j.listing&&j.listing.title)||j.sourceUrl)}</strong>
+        <div class="warn-note">${new Date(j.createdAt).toLocaleString()} · ${j.language.toUpperCase()}${j.actualDurationSec ? " · "+j.actualDurationSec+"s (rendu)" : ""}</div></div>
+        <span class="chip ${j.status}">${j.status}</span></div>
+        ${j.error ? `<div class="errbox">${esc(j.error)}</div>` : ""}
+        <div class="stagebar">${Object.entries(j.stages).map(([k,v])=>`<span class="st ${v.status}"><span class="dot"></span>${k}</span>`).join("")}</div>
+        ${j.status==="completed" && j.output ? `<video controls preload="metadata" src="/api/property/jobs/${j.id}/video"></video>` : ""}
+        <div style="margin-top:8px">${acts.join("")}</div>`;
+      d.querySelectorAll("button[data-a]").forEach(b => b.addEventListener("click", async () => {
+        try { await api("/api/property/jobs/" + b.dataset.id + "/" + b.dataset.a, { method:"POST" }); renderJobs();
+          if (b.dataset.a === "generate") poll(b.dataset.id); } catch (e) { alert(e.message); }
+      }));
+      el.appendChild(d);
+    });
+  }).catch(()=>{});
+}
+renderJobs();
+})();
+</script>
+</body>
+</html>

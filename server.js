@@ -17,6 +17,17 @@ try {
   dashboardApi = null;
 }
 
+// Property avatar presentation API — compiled from src/pipeline.
+let propertyApi;
+try {
+  propertyApi = require('./dist/pipeline/property-api.js').handlePropertyApi;
+  const pInit = require('./dist/pipeline/property-api.js').initPropertyApi();
+  console.log('✅ Property presentation mounted at /property (resumed: ' + pInit.resumed + ')');
+} catch (e) {
+  console.warn('⚠️ Property API not built (run: npx tsc -p tsconfig.dashboard.json):', e.message.split('\n')[0]);
+  propertyApi = null;
+}
+
 const PORT = 8090;
 const PROJECT = '/root/ianews';
 
@@ -517,6 +528,60 @@ const server = http.createServer(async (req, res) => {
       res.end(JSON.stringify({ error: 'Dashboard error' }));
       return;
     }
+  }
+
+  // ─── Property avatar presentation ─────────────────────────────────
+  if (pathname === '/property' && req.method === 'GET') {
+    const html = fs.readFileSync(path.join(PROJECT, 'public', 'property.html'));
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8', 'Cache-Control': 'no-store' });
+    res.end(html);
+    return;
+  }
+  if (pathname.startsWith('/api/property/')) {
+    if (!propertyApi) {
+      res.writeHead(503, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Property API not built. Run: npm run build:dashboard' }));
+      return;
+    }
+    try {
+      const handled = await propertyApi(req, res);
+      if (handled) return;
+    } catch (e) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Property API error' }));
+      return;
+    }
+  }
+  // Per-job media for Higgsfield fetches (avatar portraits + narration audio):
+  // /media/prop/<jobId>/<sub...> restricted to data/prop-jobs/<jobId>/...
+  const propMediaMatch = pathname.match(/^\/media\/prop\/([a-zA-Z0-9-]+)\/(avatar|audio)\/([a-zA-Z0-9_.-]+\.(mp3|mp4|png|jpg))$/);
+  if (propMediaMatch && req.method === 'GET') {
+    const jobId = propMediaMatch[1];
+    const sub = propMediaMatch[2];
+    const file = propMediaMatch[3];
+    if (file.includes('..')) { res.writeHead(403); res.end(); return; }
+    const baseDir = path.join(PROJECT, 'data', 'prop-jobs', jobId, 'render', 'public', sub);
+    const filePath = path.join(baseDir, file);
+    if (!path.resolve(filePath).startsWith(path.resolve(baseDir) + path.sep) || !fs.existsSync(filePath)) {
+      res.writeHead(404, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Not found' }));
+      return;
+    }
+    const mime = { '.mp3': 'audio/mpeg', '.mp4': 'video/mp4', '.png': 'image/png', '.jpg': 'image/jpeg' }[path.extname(file).toLowerCase()] || 'application/octet-stream';
+    res.writeHead(200, { 'Content-Type': mime, 'Content-Length': fs.statSync(filePath).size, 'Access-Control-Allow-Origin': '*' });
+    fs.createReadStream(filePath).pipe(res);
+    return;
+  }
+  // Presenter portraits: /media/prop/<jobId>/presenter.png
+  const presenterMatch = pathname.match(/^\/media\/prop\/([a-zA-Z0-9-]+)\/presenter\.png$/);
+  if (presenterMatch && req.method === 'GET') {
+    const filePath = path.join(PROJECT, 'data', 'prop-jobs', presenterMatch[1], 'presenter.png');
+    if (fs.existsSync(filePath)) {
+      res.writeHead(200, { 'Content-Type': 'image/png', 'Content-Length': fs.statSync(filePath).size, 'Access-Control-Allow-Origin': '*' });
+      fs.createReadStream(filePath).pipe(res);
+      return;
+    }
+    res.writeHead(404); res.end(); return;
   }
 
   // ─── Static media serving (for Higgsfield audio_url/image_url inputs) ─

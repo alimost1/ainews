@@ -187,3 +187,66 @@ assets. Concurrent jobs can never overwrite each other's files.
 - Video downloads are restricted to the job's own output directory.
 - `PUBLIC_BASE_URL` replaces the previously hardcoded deployment domain; OAuth
   redirects derive from it.
+
+## Property URL → Avatar Presentation Video
+
+Turn any property listing URL into a vertical (1080×1920) presentation video
+with a talking avatar and the listing's real photos.
+
+```bash
+npm run build:dashboard
+npm run start:server
+# → http://localhost:8090/property
+```
+
+### Flow
+1. **Paste a listing URL** — the server fetches it (SSRF-guarded: private
+   networks, localhost, and cloud metadata endpoints are refused, including
+   after redirects) and extracts: title, reference, location, price/currency,
+   land area, built area, bedrooms, bathrooms, description, amenities, and
+   gallery images (relative + lazy-loaded URLs resolved; logos/icons/ads and
+   duplicate images excluded).
+2. **Review and edit** — every field is editable; photos are selectable and
+   re-orderable; a narration is proposed from the reviewed facts and can be
+   edited freely. The source agency is kept as the branding default — never
+   replaced. Built area is never inferred from land area.
+3. **Generate** — with explicit confirmation showing the provider, model,
+   voice, target duration, and a cost estimate.
+4. **Preview and download** the MP4; history lists every job with per-stage status.
+
+### Video structure (fr default, ar + en supported)
+Opening (avatar introduces the property) → tour (real photos, Ken Burns pan/zoom,
+crossfades) → highlight captions (verified facts, price, location; RTL for Arabic)
+→ closing invitation to contact the agency. The avatar stays in a small panel,
+never composited into the property, and photos are used as-is (watermarks intact).
+
+### Lip-sync capability (verified)
+The avatar stage uses **Higgsfield `wan/v2.7/image-to-video`** with
+`image_url` + `audio_url` + prompt + duration (2–15 s per segment) +
+`resolution: 720p` + `aspect_ratio: 9:16` — the audio-driven image-to-video
+endpoint documented at docs.higgsfield.ai. Narration is split into ≤14 s
+segments; each segment is lipsynced separately with the real provider
+`request_id` polled to completion, then all segments are assembled
+consecutively (ffprobe-measured audio durations — no overlap, no cut-offs)
+into a Remotion composition.
+
+If `HF_API_KEY_ID`/`HF_API_KEY_SECRET` or `ELEVENLABS_API_KEY` are missing,
+the job fails immediately with the exact missing variables named — no silent
+substitution and no invented models.
+
+### API
+| Method | Path | Description |
+|---|---|---|
+| POST | `/api/property/extract` | `{url}` → extracted listing |
+| POST | `/api/property/jobs` | Create draft (validated; clientToken idempotent) |
+| POST | `/api/property/jobs/:id/generate` | Queue generation after review |
+| POST | `/api/property/jobs/:id/cancel` | Cancel queued/running job |
+| GET | `/api/property/jobs` | History with stage statuses |
+| GET | `/api/property/jobs/:id/video` | Download the MP4 (path-restricted) |
+| POST | `/api/property/upload-avatar` | Upload presenter portrait (PNG/JPG ≤ 2 MB) |
+| GET | `/api/property/config` | Verified capabilities + cost estimate |
+
+Each job gets its own workspace `data/prop-jobs/<id>/` (listing, narration
+audio, avatar clips, generated Remotion project, MP4). Jobs persist across
+restarts; completed assets are reused on retry. API keys never leave the
+backend. Nothing is published automatically.

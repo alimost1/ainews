@@ -39,3 +39,6 @@ data/pipeline_status.json
 
 # Generated job workspaces
 data/jobs/
+
+# Property presentation job workspaces
+data/prop-jobs/
