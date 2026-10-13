@@ -40,7 +40,7 @@ export const Scene: React.FC<SceneProps> = ({
     frame,
     [0, 15, durationInFrames - 15, durationInFrames],
     [0, 1, 1, 0],
-    { extrapolateClamp: true }
+    { extrapolateLeft: "clamp", extrapolateRight: "clamp" }
   );
 
   // Subtle zoom effect (Ken Burns)
@@ -48,7 +48,7 @@ export const Scene: React.FC<SceneProps> = ({
     frame,
     [0, durationInFrames],
     [1, 1.08],
-    { extrapolateClamp: true }
+    { extrapolateLeft: "clamp", extrapolateRight: "clamp" }
   );
 
   // Text slide-up animation
@@ -56,7 +56,7 @@ export const Scene: React.FC<SceneProps> = ({
     frame,
     [5, 25],
     [30, 0],
-    { extrapolateClamp: true }
+    { extrapolateLeft: "clamp", extrapolateRight: "clamp" }
   );
 
   // Mood-based overlay gradient

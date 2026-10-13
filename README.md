@@ -7,9 +7,9 @@
    OPENROUTER_API_KEY=sk-or-v1-xxxxxxxxxxxx
    ```
 
-2. Install dependencies:
+2. Install Node.js 20 or newer, Python `edge-tts` (`pip install edge-tts`), and FFmpeg (including `ffprobe`). Then install dependencies:
    ```
-   npm install
+   npm ci
    ```
 
 3. Run the full pipeline:
@@ -43,7 +43,7 @@ ianews/
 │   │   └── Scene.tsx        # Individual scene component
 │   ├── types/           # TypeScript type definitions
 │   │   └── index.ts
-│   ├── orchestrator.ts  # Runs all agents sequentially
+│   ├── main.ts  # Runs all agents sequentially
 │   └── index.ts         # Remotion entry point
 ├── data/                # Generated script.json
 ├── public/
@@ -60,9 +60,9 @@ ianews/
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `OPENROUTER_API_KEY` | OpenRouter API key (required) | - |
-| `OPENROUTER_MODEL` | LLM model to use | `cognitivecomputations/dolphin-mixtral-8x7b:free` |
-| `VIDEO_WIDTH` | Output width | `1280` |
-| `VIDEO_HEIGHT` | Output height | `720` |
+| `OPENROUTER_MODEL` | LLM model to use | `openai/gpt-oss-120b:free` |
+| `VIDEO_WIDTH` | Output width | `1080` |
+| `VIDEO_HEIGHT` | Output height | `1920` |
 | `FPS` | Frames per second | `30` |
 
 ## Agents
@@ -94,5 +94,37 @@ ianews/
 
 The final video is rendered to `output/output.mp4` using:
 ```
-npx remotion render output/output.mp4
+npm run render
 ```
+
+## Reliable generation and progress
+
+Options accept both `--topic="AI news"` and `--topic "AI news"`. Duration is
+9–300 whole seconds and is passed to both research and script generation.
+The default is `VIDEO_DURATION` (30 seconds when unset). For asset generation only:
+
+```sh
+npm start -- --topic="أخبار الذكاء الاصطناعي" --duration=30 --skip-render
+```
+
+`data/pipeline_status.json` records the current stage (`research`, `script`,
+`images`, `voice`, `edit`, `render`), completed stages, timestamps, and any failure.
+Check it while the command runs to see progress. Run only one pipeline at a time:
+image and voice stages share `data/script.json` and run sequentially.
+
+Narration failures stop the pipeline rather than producing placeholder audio.
+Audio duration is measured with `ffprobe`, and scenes play consecutively without
+cutting off fractional seconds of narration. Editing refuses missing images or
+missing/placeholder audio before writing the Remotion composition.
+The requested duration is a script target; final video length follows the actual
+narration duration. Generation does not publish to social platforms.
+
+## Development checks
+
+```sh
+npm run typecheck
+npm test
+```
+
+Tests cover command parsing, Arabic/quoted topics, invalid options, scene timing,
+and generated composition behavior without calling paid generation services.
