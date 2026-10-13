@@ -30,3 +30,12 @@ Thumbs.db
 # IDE
 .vscode/
 .idea/
+
+# Runtime pipeline progress
+data/pipeline_status.json
+
+# Compiled dashboard
+/dist/
+
+# Generated job workspaces
+data/jobs/

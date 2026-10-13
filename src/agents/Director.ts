@@ -10,6 +10,7 @@
 import * as fs from "fs";
 import * as path from "path";
 import Parser from "rss-parser";
+import { pipelineOptions } from "../pipeline/options";
 import { logger, CONFIG, callOpenRouter, writeJSON, sleep } from "./shared";
 import type { NewsItem, DirectorOutput } from "../types";
 
@@ -193,21 +194,7 @@ export async function runDirector(topic: string, duration: number): Promise<Dire
 
 // ─── CLI Entry Point ────────────────────────────────────────────
 if (require.main === module) {
-  const args = process.argv.slice(2);
-  const parseArgs = () => {
-    const result: Record<string, string> = {};
-    for (let i = 0; i < args.length; i++) {
-      if (args[i].startsWith("--") && args[i + 1]) {
-        result[args[i].replace("--", "")] = args[i + 1];
-        i++;
-      }
-    }
-    return result;
-  };
-
-  const parsed = parseArgs();
-  const topic = parsed.topic || (CONFIG.language === "ar" ? "أحدث أخبار الذكاء الاصطناعي" : "Latest AI breakthroughs");
-  const duration = parseInt(parsed.duration || String(CONFIG.duration) || "30", 10);
+  const { topic, duration } = pipelineOptions(process.argv.slice(2), CONFIG.duration);
 
   runDirector(topic, duration)
     .then(() => {

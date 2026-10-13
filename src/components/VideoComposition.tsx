@@ -6,7 +6,7 @@
  */
 
 import React from "react";
-import { Composition, staticFile } from "remotion";
+import { Composition, Sequence } from "remotion";
 import { Scene } from "./Scene";
 
 // ─── Scene Assets ───────────────────────────────────────────────
@@ -33,8 +33,8 @@ export const VideoComposition: React.FC = () => {
       {sceneKeys.map((key) => {
         const scene = SCENES[key];
         return (
+          <Sequence key={key} from={sceneOffsets[key]} durationInFrames={scene.duration}>
           <Scene
-            key={key}
             imagePath={scene.img}
             audioPath={scene.audio}
             narrationText={scene.text}
@@ -42,6 +42,7 @@ export const VideoComposition: React.FC = () => {
             sceneNumber={sceneKeys.indexOf(key) + 1}
             mood={scene.mood}
           />
+          </Sequence>
         );
       })}
     </>

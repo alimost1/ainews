@@ -11,7 +11,7 @@ export const SceneSchema = z.object({
   voice_emotion: z.enum(["friendly", "cheerful", "sad", "angry", "excited", "terrified", "shouting", "unfriendly", "whispering", "hopeful"]),
   image_path: z.string().optional(),
   audio_path: z.string().optional(),
-  audio_duration: z.number().optional(),
+  audio_duration: z.number().finite().positive().optional(),
 });
 
 export type Scene = z.infer<typeof SceneSchema>;
@@ -22,7 +22,7 @@ export const ScriptSchema = z.object({
   total_duration: z.number(),
   generated_at: z.string(),
   research_summary: z.string(),
-  scenes: z.array(SceneSchema),
+  scenes: z.array(SceneSchema).min(1),
 });
 
 export type Script = z.infer<typeof ScriptSchema>;

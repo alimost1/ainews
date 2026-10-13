@@ -26,10 +26,15 @@ export const CONFIG = {
   language: process.env.VIDEO_LANGUAGE || "ar",
   duration: parseInt(process.env.VIDEO_DURATION || "30", 10),
   projectRoot: path.resolve(__dirname, "../.."),
-  dataDir: path.resolve(__dirname, "../../data"),
-  imagesDir: path.resolve(__dirname, "../../public/images"),
-  audioDir: path.resolve(__dirname, "../../public/audio"),
-  outputDir: path.resolve(__dirname, "../../output"),
+  // Workspace overrides: the job runner isolates each generation in its own
+  // directory via these environment variables. Defaults preserve the
+  // historical single-run layout.
+  dataDir: process.env.IANEWS_DATA_DIR || path.resolve(__dirname, "../../data"),
+  imagesDir: process.env.IANEWS_IMAGES_DIR || path.resolve(__dirname, "../../public/images"),
+  audioDir: process.env.IANEWS_AUDIO_DIR || path.resolve(__dirname, "../../public/audio"),
+  outputDir: process.env.IANEWS_OUTPUT_DIR || path.resolve(__dirname, "../../output"),
+  editorDir: process.env.IANEWS_EDITOR_DIR || path.resolve(__dirname, "../"),
+  providerLog: process.env.IANEWS_PROVIDER_LOG || "",
   // Cloudflare Workers AI
   cfAccountId: process.env.CF_ACCOUNT_ID || "",
   cfApiToken: process.env.CF_API_TOKEN || "",
@@ -93,6 +98,12 @@ export async function callOpenRouter(
 
       if (!content) {
         throw new Error("Empty response from OpenRouter");
+      }
+
+      // Record the REAL provider request id for observability (never invent one).
+      const requestId = data.id || data["x-openrouter-request-id"] || response.headers?.get?.("x-openrouter-request-id");
+      if (requestId && CONFIG.providerLog) {
+        try { fs.appendFileSync(CONFIG.providerLog, String(requestId) + "\n"); } catch { /* best-effort */ }
       }
 
       return content;
