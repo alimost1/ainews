@@ -36,6 +36,7 @@ export interface PropJobRecord {
   listing: PropJobInput["listing"];
   branding: PropJobInput["branding"];
   avatarProvided: boolean;
+  motionModel?: import("./property-models").PropertyMotion;
   stages: Record<PropStage, PropStageRecord>;
   segments?: { text: string; audioSec?: number }[];
   actualDurationSec?: number;
@@ -45,7 +46,13 @@ export interface PropJobRecord {
 }
 
 function readIndex(): Record<string, PropJobRecord> {
-  try { return JSON.parse(fs.readFileSync(INDEX_PATH, "utf-8")); } catch { return {}; }
+  try {
+    const jobs = JSON.parse(fs.readFileSync(INDEX_PATH, "utf-8"));
+    for (const job of Object.values(jobs) as PropJobRecord[]) {
+      job.stages.motion ||= { status: "pending", attempts: 0 };
+    }
+    return jobs;
+  } catch { return {}; }
 }
 
 export function propJobDir(id: string) {
