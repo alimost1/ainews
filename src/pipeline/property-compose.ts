@@ -133,4 +133,6 @@ Config.setPixelFormat("yuv420p");
 Config.setDelayRenderTimeoutInMilliseconds(120000);
 // Parallel page contexts exhaust small-host memory with embedded clips
 Config.setConcurrency(2);
+// Use the vendored chrome-headless-shell (Remotion's downloaded build segfaults on this host)
+if (process.env.REMOTION_BROWSER_EXECUTABLE) Config.setBrowserExecutable(process.env.REMOTION_BROWSER_EXECUTABLE);
 `;
