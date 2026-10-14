@@ -9,8 +9,10 @@
  */
 
 import * as path from "path";
+import { parseOptions } from "../pipeline/options";
 import { logger, CONFIG, callOpenRouter, readJSON, writeJSON, extractJSON } from "./shared";
 import type { DirectorOutput, Script, Scene } from "../types";
+import { ScriptSchema } from "../types";
 
 const SCRIPT_PATH = path.join(CONFIG.dataDir, "script.json");
 const DIRECTOR_PATH = path.join(CONFIG.dataDir, "director_output.json");
@@ -21,7 +23,7 @@ const DIRECTOR_PATH = path.join(CONFIG.dataDir, "director_output.json");
 async function generateScript(topic: string, research: DirectorOutput): Promise<Script> {
   const isAr = CONFIG.language === "ar";
   const targetDuration = CONFIG.duration || research.suggested_duration || 30;
-  const sceneCount = Math.min(Math.max(Math.round(targetDuration / 7), 3), 5);
+  const sceneCount = Math.min(Math.max(Math.round(targetDuration / 7), 3), 20);
 
   const messages = [
     {
@@ -48,7 +50,7 @@ async function generateScript(topic: string, research: DirectorOutput): Promise<
 
 القواعد:
 - أنشئ ${sceneCount} مشاهد
-- كل مشهد ${Math.round(targetDuration / sceneCount)}-12 ثانية
+- كل مشهد ${(targetDuration / sceneCount).toFixed(1)} ثانية
 - المدة الإجمالية يجب أن تطابق ${targetDuration} ثانية
 - السرد يجب أن يكون حواريًا وجذابًا بالعربية الفصحى البسيطة
 - أوصاف الصور بالإنجليزية وتفصيلية
@@ -77,7 +79,7 @@ Respond ONLY with a JSON object (no markdown, no code blocks) with this exact st
 
 Rules:
 - Create ${sceneCount} scenes
-- Each scene ${Math.round(targetDuration / sceneCount)}-12 seconds
+- Each scene ${(targetDuration / sceneCount).toFixed(1)} seconds
 - Total duration should match ${targetDuration} seconds
 - Narration should be conversational and engaging
 - Visual prompts should be descriptive and specific in English
@@ -131,7 +133,7 @@ Target Duration: ${targetDuration} seconds`,
     };
 
     logger.success(`Generated ${script.scenes.length} scenes (${script.total_duration}s total)`);
-    return script;
+    return ScriptSchema.parse(script);
   } catch (err: any) {
     logger.warn(`Failed to parse script: ${err.message}, creating fallback`);
     return createFallbackScript(topic, research);
@@ -188,7 +190,7 @@ export async function runScriptWriter(topic?: string): Promise<Script> {
   const script = await generateScript(topic || research.key_headlines[0] || "AI News", research);
 
   // Save script
-  writeJSON(SCRIPT_PATH, script);
+  writeJSON(SCRIPT_PATH, ScriptSchema.parse(script));
   logger.success(`Script saved to ${SCRIPT_PATH}`);
 
   return script;
@@ -196,9 +198,7 @@ export async function runScriptWriter(topic?: string): Promise<Script> {
 
 // ─── CLI Entry Point ────────────────────────────────────────────
 if (require.main === module) {
-  const topic = process.argv.find((a, i) => a === "--topic" && process.argv[i + 1])
-    ? process.argv[process.argv.indexOf("--topic") + 1]
-    : undefined;
+  const topic = parseOptions(process.argv.slice(2)).topic;
 
   runScriptWriter(topic)
     .then(() => {

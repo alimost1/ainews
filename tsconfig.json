@@ -13,7 +13,7 @@
     "isolatedModules": true,
     "noEmit": true,
     "outDir": "./dist",
-    "rootDir": "./src",
+    "rootDir": ".",
     "baseUrl": ".",
     "paths": {
       "@/*": ["./src/*"]
