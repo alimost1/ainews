@@ -123,7 +123,8 @@ registerRoot(Root);
 }
 
 /** remotion.config.ts content (same as main app). */
-export const REMOTION_CONFIG = `import { Config } from "@remotion/cli/config";
+export function makeRemotionConfig(vendorChrome?: string | null) {
+  return `import { Config } from "@remotion/cli/config";
 Config.setVideoImageFormat("jpeg");
 Config.setOverwriteOutput(true);
 Config.setCodec("h264");
@@ -133,6 +134,8 @@ Config.setPixelFormat("yuv420p");
 Config.setDelayRenderTimeoutInMilliseconds(120000);
 // Parallel page contexts exhaust small-host memory with embedded clips
 Config.setConcurrency(2);
-// Use the vendored chrome-headless-shell (Remotion's downloaded build segfaults on this host)
-if (process.env.REMOTION_BROWSER_EXECUTABLE) Config.setBrowserExecutable(process.env.REMOTION_BROWSER_EXECUTABLE);
+${vendorChrome ? `// Vendored chrome-headless-shell (Remotion's downloaded build may segfault on this host)\nConfig.setBrowserExecutable(${JSON.stringify(vendorChrome)});` : ""}
 `;
+}
+/** @deprecated schema-free string kept for backward compatibility with existing call sites. */
+export const REMOTION_CONFIG = makeRemotionConfig(process.env.REMOTION_BROWSER_EXECUTABLE || null);

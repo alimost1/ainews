@@ -14,7 +14,7 @@ import { downloadImageSafe } from "./property-extract";
 import {
   segmentNarration, elevenTtsSegment, hfAvatarSegment, probeDuration, MAX_SEGMENT_SEC,
 } from "./property-presentation";
-import { generateRemotionProject, REMOTION_CONFIG, type SegmentPlan } from "./property-compose";
+import { generateRemotionProject, makeRemotionConfig, type SegmentPlan } from "./property-compose";
 import { PropJobStore, propJobDir, publicPropJob, type PropJobRecord } from "./property-jobs";
 import type { PropStage } from "./property-presentation";
 
@@ -214,14 +214,16 @@ async function executePropJob(jobId: string): Promise<void> {
     // ── compose: generate Remotion project ──────────────────────────
     await stageRun("compose", async () => {
       generateRemotionProject({ jobDir: dir, plan, input: j, fps: 30, gallery });
-      fs.writeFileSync(path.join(renderDir, "remotion.config.ts"), REMOTION_CONFIG);
+      const vendorChrome = path.join(ROOT, "vendor", "chrome-headless-shell", "chrome-headless-shell-linux64", "chrome-headless-shell");
+      fs.writeFileSync(path.join(renderDir, "remotion.config.ts"),
+        makeRemotionConfig(fs.existsSync(vendorChrome) ? vendorChrome : (process.env.REMOTION_BROWSER_EXECUTABLE || null)));
     });
 
     // ── render ─────────────────────────────────────────────────────
     const outPath = path.join(dir, "output.mp4");
     await stageRun("render", async () => {
       const r = await runStage(npx(), ["remotion", "render", "index.tsx", "PropertyPresentation", outPath,
-        "--public-dir", pub], renderDir, 20 * 60 * 1000);
+        "--public-dir", pub], renderDir, 40 * 60 * 1000);
       if (r.code !== 0) throw new Error((r.stderr || r.stdout || "render failed").split("\n").filter(Boolean).slice(-4).join(" | ").slice(0, 500));
       if (!fs.existsSync(outPath) || fs.statSync(outPath).size < 10_000) throw new Error("Rendered MP4 missing or too small");
       const dur = probeDuration(outPath);
