@@ -1,12 +1,12 @@
 import React from 'react';
-import { AbsoluteFill, Audio, Img, OffthreadVideo, Sequence, interpolate, staticFile, useCurrentFrame } from 'remotion';
+import { AbsoluteFill, Audio, Img, OffthreadVideo, Sequence, Video, interpolate, staticFile, useCurrentFrame } from 'remotion';
 
 export interface PresentationData {
   fps: number; rtl: boolean; totalFrames: number; language?: string;
   title: string; location: string; reference: string; price: string;
   agency: string; contact: string; highlights: string[]; closing: string; aiMotion: boolean;
   segments: { from: number; duration: number; audio: string; avatar: string }[];
-  shots: { from: number; duration: number; index: number; photo: string; video?: string }[];
+  shots: { from: number; duration: number; index: number; photo: string; video?: string; blur?: string }[];
 }
 const clamp = { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' } as const;
 const gold = '#E7C58A';
@@ -16,8 +16,9 @@ const Photo: React.FC<{ shot: PresentationData['shots'][number]; fps: number }> 
   const fade = shot.index === 0 ? 1 : interpolate(frame, [0, fps * .4], [0, 1], clamp);
   const scale = shot.index % 2 ? 1.08 - progress * .06 : 1.02 + progress * .06;
   const x = (shot.index % 2 ? -1 : 1) * (progress - .5) * 22;
+  // Background uses a pre-blurred asset (composed offline) so the static layer rasterizes once.
   return <AbsoluteFill style={{ opacity: fade, background: '#101716' }}>
-    <Img src={staticFile(shot.photo)} style={{ width: '100%', height: '100%', objectFit: 'cover', filter: 'blur(40px) brightness(.4)', transform: 'scale(1.15)' }} />
+    <Img src={staticFile(shot.blur || shot.photo)} style={{ width: '100%', height: '100%', objectFit: 'cover', filter: `brightness(.4)${shot.blur ? '' : ' blur(40px)'}`, transform: 'scale(1.15)' }} />
     <AbsoluteFill style={{ justifyContent: 'center', transform: `translateX(${x}px) scale(${scale})` }}>
       {shot.video ? <OffthreadVideo src={staticFile(shot.video)} muted style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
         : <Img src={staticFile(shot.photo)} style={{ width: '100%', height: '100%', objectFit: 'contain' }} />}
@@ -48,7 +49,7 @@ export const PropertyPresentation: React.FC<PresentationData> = data => {
       <Audio src={staticFile(s.audio)} />
       <div style={{ position: 'absolute', right: data.rtl ? undefined : 48, left: data.rtl ? 48 : undefined, bottom: 460,
         width: panelWidth, height: panelWidth * 1.3, borderRadius: 22, overflow: 'hidden', border: '2px solid rgba(231,197,138,.7)', boxShadow: '0 16px 46px #0008' }}>
-        <OffthreadVideo src={staticFile(s.avatar)} muted style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+        <Video src={staticFile(s.avatar)} muted style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
       </div>
     </Sequence>)}
     <div style={{ position: 'absolute', left: 64, right: 64, bottom: 180 }}>

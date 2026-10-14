@@ -8,6 +8,7 @@
  */
 import * as fs from "fs";
 import * as path from "path";
+import { execFileSync } from "child_process";
 import { planGallery, frameTimeline, type GalleryAsset } from "./property-cinematic";
 import type { PropJobInput } from "./property-presentation";
 
@@ -59,6 +60,20 @@ export function generateRemotionProject(opts: {
   const timeline = frameTimeline(plan.map(s => s.durationSec), fps);
   const totalFrames = timeline.reduce((sum, s) => sum + s.duration, 0);
   const assets: GalleryAsset[] = opts.gallery || plan.filter(s => s.photoFile).map(s => ({photo: s.photoFile!}));
+  // Pre-blur photo backgrounds with ffmpeg once per asset; per-frame blur(40px) on
+  // full-bleed layers is the dominant raster cost of the composition.
+  const blurBin = process.env.FFMPEG_BIN || "ffmpeg";
+  for (const a of assets) {
+    const src = path.join(pub, a.photo);
+    const rel = a.photo.replace(/([^/]+)\.jpg$/, "blur_$1.jpg");
+    const dst = path.join(pub, rel);
+    if (fs.existsSync(src) && !fs.existsSync(dst)) {
+      try {
+        execFileSync(blurBin, ["-v", "error", "-y", "-i", src, "-vf", "scale=1920:1080:force_original_aspect_ratio=increase:flags=lanczos,crop=1920:1080,boxblur=20:2,eq=brightness=-0.45", "-q:v", "5", dst]);
+      } catch { /* fall back to in-browser blur below */ }
+    }
+    if (fs.existsSync(dst)) a.blur = rel;
+  }
   const data = {
     fps, totalFrames, language: input.language, rtl: input.language === "ar", title: input.listing.title,
     location: input.listing.location, reference: input.listing.reference,
@@ -116,4 +131,6 @@ Config.setCrf(18);
 Config.setPixelFormat("yuv420p");
 // OffthreadVideo decode of full-frame clips on small hosts can exceed the 30s default
 Config.setDelayRenderTimeoutInMilliseconds(120000);
+// Parallel page contexts exhaust small-host memory with embedded clips
+Config.setConcurrency(2);
 `;

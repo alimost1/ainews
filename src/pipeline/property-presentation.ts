@@ -13,18 +13,19 @@
  *
  * Verified Higgsfield capability (docs.higgsfield.ai, checked in this repo's
  * research): wan/v2.7/image-to-video accepts image_url + audio_url + prompt +
- * duration(2-15) + resolution + aspect_ratio. That is the audio-driven avatar
+ * duration(2-15) + resolution. That is the audio-driven avatar
  * endpoint used. No other lip-sync model is claimed.
  */
 import * as fs from "fs";
+import { generateHiggsfield, type RequestHandle } from "./property-models";
 import * as path from "path";
 import { execFileSync } from "child_process";
 
 export const HF_API = "https://api.higgsfield.ai";
 export const ELEVEN_TTS_URL = "https://api.elevenlabs.io/v1/text-to-speech";
 
-export type PropStage = "extract" | "script" | "voice" | "avatar" | "compose" | "render";
-export const PROP_STAGES: PropStage[] = ["extract", "script", "voice", "avatar", "compose", "render"];
+export type PropStage = "extract" | "script" | "voice" | "avatar" | "motion" | "compose" | "render";
+export const PROP_STAGES: PropStage[] = ["extract", "script", "voice", "avatar", "motion", "compose", "render"];
 
 export interface PropJobInput {
   sourceUrl: string;
@@ -51,6 +52,7 @@ export interface PropJobInput {
     agencyName: string; // editable; defaults to the SOURCE agency, never Galiska
     contactLine: string;
   };
+  motionModel?: import("./property-models").PropertyMotion;
   clientToken?: string;
 }
 
@@ -70,8 +72,7 @@ export function segmentNarration(narration: string, maxSec = MAX_SEGMENT_SEC): s
     if (cur.length >= wordsPerSegment) { segments.push(cur.join(" ")); cur = []; }
   }
   if (cur.length) {
-    if (cur.length < 4 && segments.length) segments[segments.length - 1] += " " + cur.join(" ");
-    else segments.push(cur.join(" "));
+    segments.push(cur.join(" "));
   }
   return segments;
 }
@@ -105,66 +106,25 @@ export async function elevenTtsSegment(text: string, voiceId: string, apiKey: st
   return outFile;
 }
 
-// ─── Higgsfield avatar (verified endpoint only) ───────────────────
-const TERMINAL = new Set(["completed", "failed", "nsfw", "canceled"]);
-const sleep = (ms: number) => new Promise(r => setTimeout(r, ms));
-
+// ─── Higgsfield avatar; verified audio_url schema, 1080p ──────────
 export interface HfPollResult { requestId: string; videoUrl: string; }
-
 export async function hfAvatarSegment(opts: {
-  keyId: string; keySecret: string;
-  imageUrl: string; audioUrl: string; prompt: string; durationSec: number;
-  aspectRatio: "9:16";
+  keyId: string; keySecret: string; imageUrl: string; audioUrl: string;
+  prompt: string; durationSec: number; aspectRatio: "9:16";
+  resume?: RequestHandle; onSubmitted?: (handle: RequestHandle) => void;
   log?: (msg: string) => void;
 }): Promise<HfPollResult> {
-  const auth = `Key ${opts.keyId}:${opts.keySecret}`;
-  const submit = await fetch(`${HF_API}/wan/v2.7/image-to-video`, {
-    method: "POST",
-    headers: { Authorization: auth, "Content-Type": "application/json" },
-    body: JSON.stringify({
-      image_url: opts.imageUrl,
-      audio_url: opts.audioUrl,
-      prompt: opts.prompt,
-      duration: Math.min(Math.max(Math.round(opts.durationSec), 2), 15),
-      resolution: "720p",
-      aspect_ratio: opts.aspectRatio,
-    }),
+  if (!Number.isFinite(opts.durationSec) || opts.durationSec > 15) throw new Error("Narration segment exceeds the 15s avatar limit");
+  return generateHiggsfield({
+    endpoint: "wan/v2.7/image-to-video", keyId: opts.keyId, keySecret: opts.keySecret,
+    resume: opts.resume, onSubmitted: opts.onSubmitted || (() => {}), log: opts.log,
+    input: { image_url: opts.imageUrl, audio_url: opts.audioUrl, prompt: opts.prompt,
+      duration: Math.max(2, Math.ceil(opts.durationSec)), resolution: "1080p", prompt_extend: false },
   });
-  const body = await submit.json().catch(() => ({}));
-  if (!submit.ok) throw new Error(`Higgsfield submit ${submit.status}: ${JSON.stringify(body).slice(0, 250)}`);
-  const { request_id, status_url } = body as { request_id?: string; status_url?: string };
-  if (!status_url || !request_id) throw new Error(`Higgsfield returned no request handle: ${JSON.stringify(body).slice(0, 200)}`);
-  opts.log?.(`avatar request ${request_id} (${body.status})`);
-
-  let delay = 2000, last = String(body.status || "queued");
-  const deadline = Date.now() + 20 * 60 * 1000;
-  while (Date.now() < deadline) {
-    await sleep(delay); delay = Math.min(delay * 1.5, 10000);
-    const poll = await fetch(status_url, { headers: { Authorization: auth } });
-    if (poll.status === 401) throw new Error("Higgsfield polling: invalid credentials");
-    if (!poll.ok) continue; // transient; retry
-    const d = await poll.json();
-    const status = String(d.status || "");
-    if (status !== last) { opts.log?.(`avatar ${request_id}: ${status}`); last = status; }
-    if (TERMINAL.has(status)) {
-      if (status !== "completed") throw new Error(`Higgsfield ${request_id} ended ${status}: ${JSON.stringify(d.error || {}).slice(0, 200)}`);
-      const videoUrl = d.video?.url || d.output?.video?.url;
-      if (!videoUrl) throw new Error(`Higgsfield ${request_id}: completed without video URL`);
-      return { requestId: request_id, videoUrl };
-    }
-  }
-  throw new Error(`Higgsfield polling timeout for ${request_id}`);
 }
 
-// ─── Cost estimate (per docs pricing; approximate) ─────────────────
-export function estimateCost(totalSec: number): { elevenLabsUsd: string; higgsfieldUsd: string; note: string } {
-  // ElevenLabs multilingual v2: ~$0.15/1k chars typical tier -> ~45-60s narration ≈ 150-180 words ≈ 900-1100 chars
-  const chars = Math.round(totalSec * 17); // ~17 chars/sec spoken
-  // Higgsfield wan/v2.7/video: catalog listed from ~$0.027/s (60% off) to $0.068/s; use upper bound
-  const hfUpper = totalSec * 0.068;
-  return {
-    elevenLabsUsd: `$${(chars / 1000 * 0.15).toFixed(2)}`,
-    higgsfieldUsd: `$${hfUpper.toFixed(2)}`,
-    note: "Approximate upper bounds; confirm current prices with the providers before generating.",
-  };
+// Live prices depend on model, resolution and account; never quote an unsupported estimate.
+export function estimateCost(_totalSec: number) {
+  return { elevenLabsUsd: "Check provider billing", higgsfieldUsd: "Check provider billing",
+    note: "Prices vary by model, resolution and account. Confirm current provider billing before generating." };
 }

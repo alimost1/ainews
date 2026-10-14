@@ -394,6 +394,12 @@ export const htmlAdapter: Adapter = (html, url) => {
 const DEFAULT_ADAPTERS: Adapter[] = [structuredDataAdapter, metaAdapter, htmlAdapter];
 
 export function extractListingFromHtml(html: string, url: string, adapters: Adapter[] = DEFAULT_ADAPTERS): PropertyListing {
+  // This site places unrelated listings in a separate section after the gallery.
+  // Exclude that section before every adapter, including price and image extraction.
+  if (/^(www\.)?promoimmomarrakech\.com$/.test(new URL(url).hostname)) {
+    const related = html.search(/<h[1-6][^>]*>\s*Produits similaires/i);
+    if (related >= 0) html = html.slice(0, related);
+  }
   const merged: Partial<PropertyListing> & { images?: string[] } = {};
   let images: string[] = [];
   for (const adapter of adapters) {

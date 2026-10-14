@@ -14,6 +14,7 @@
  * All provider keys stay server-side; responses never include them.
  */
 import * as http from "http";
+import { MOTION_MODELS, validateMotion } from "./property-models";
 import * as fs from "fs";
 import * as path from "path";
 import { URL } from "url";
@@ -60,9 +61,10 @@ export function propertyCapabilities() {
       provider: "Higgsfield",
       model: "wan/v2.7/image-to-video",
       verifiedEndpoint: "POST https://api.higgsfield.ai/wan/v2.7/image-to-video",
-      params: { image_url: "presenter portrait URL", audio_url: "segment narration URL", duration: "2-15s", resolution: "720p", aspect_ratio: "9:16" },
+      params: { image_url: "presenter portrait URL", audio_url: "segment narration URL", duration: "2-15s", resolution: "1080p" },
       missing: hfConfigured ? [] : ["HF_API_KEY_ID", "HF_API_KEY_SECRET"],
     },
+    motion: { supported: hfConfigured, models: MOTION_MODELS, default: "photo" },
     tts: {
       supported: elevenConfigured,
       provider: "ElevenLabs",
@@ -91,6 +93,7 @@ function validateDraft(body: any) {
     ? listing.images.filter((i: unknown) => typeof i === "string" && /^https?:\/\//.test(i) || typeof i === "string" && i.startsWith("uploaded:")).slice(0, 20)
     : [];
   return {
+    motionModel: validateMotion(body.motionModel),
     sourceUrl: str(body.sourceUrl, 500) || "",
     language,
     voiceId: str(body.voiceId, 64) || (process.env.ELEVEN_VOICE_ID || "JBFqnCBsd6RMkjVDRZzb"),
@@ -180,6 +183,7 @@ export async function handlePropertyApi(req: http.IncomingMessage, res: http.Ser
       const job = store.createDraft({
         sourceUrl: draft.sourceUrl,
         language: draft.language,
+        motionModel: draft.motionModel,
         voiceId: draft.voiceId,
         narration: draft.narration,
         listing: draft.listing,
