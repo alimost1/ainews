@@ -4,6 +4,9 @@
  * composition + render.
  */
 import * as fs from "fs";
+import { generateHiggsfield, motionRequest, MOTION_MODELS, type RequestHandle } from "./property-models";
+import { prepareNarrationAudio } from "./property-audio";
+import type { GalleryAsset } from "./property-cinematic";
 import * as path from "path";
 import { execFileSync } from "child_process";
 import { spawn } from "child_process";
@@ -90,34 +93,28 @@ async function executePropJob(jobId: string): Promise<void> {
     if (!segments) throw new Error("No segments");
 
     // ── voice: ElevenLabs per segment, ffprobe-measured ─────────────
-    requireEleven();
     const audioDir = path.join(pub, "audio");
     fs.mkdirSync(audioDir, { recursive: true });
-    const plan: SegmentPlan[] = [];
-    for (let i = 0; i < segments.length; i++) {
-      const segFile = path.join(audioDir, `seg_${String(i + 1).padStart(2, "0")}.mp3`);
-      const staticAudio = `audio/seg_${String(i + 1).padStart(2, "0")}.mp3`;
-      const seg = segments[i];
-      await stageRun("voice" as PropStage, async () => {
-        if (!(fs.existsSync(segFile) && fs.statSync(segFile).size > 200)) {
-          await elevenTtsSegment(seg.text, store.get(jobId)!.voiceId, elevenKey, segFile);
-        }
-        const dur = probeDuration(segFile);
-        seg.audioSec = dur;
-        const j = store.get(jobId)!;
-        j.segments![i].audioSec = dur;
-        store.update(jobId, { segments: j.segments });
+    await stageRun("voice", async () => {
+      requireEleven();
+      await prepareNarrationAudio({segments: segments!, audioDir,
+        generate: (text, file) => elevenTtsSegment(text, store.get(jobId)!.voiceId, elevenKey, file),
+        probe: probeDuration, save: () => { store.update(jobId, { segments }); },
       });
-      plan.push({ text: seg.text, audioFile: staticAudio, avatarClip: "", durationSec: seg.audioSec ?? 5, photoFile: undefined, caption: undefined });
-    }
-    if (store.get(jobId)!.stages.voice.status !== "completed") store.updateStage(jobId, "voice", { status: "completed" });
+    });
+    segments = store.get(jobId)!.segments!;
+    const plan: SegmentPlan[] = segments.map((seg, i) => ({
+      text: seg.text, audioFile: `audio/seg_${String(i + 1).padStart(2, "0")}.mp3`,
+      avatarClip: `avatar/seg_${String(i + 1).padStart(2, "0")}.mp4`,
+      durationSec: probeDuration(path.join(audioDir, `seg_${String(i + 1).padStart(2, "0")}.mp3`)),
+    }));
 
     // ── photos: download selected gallery images (SSRF-safe) ───────
     const photoDir = path.join(pub, "photos");
     fs.mkdirSync(photoDir, { recursive: true });
     const images = store.get(jobId)!.listing.images;
     const photoFiles: string[] = [];
-    for (let i = 0; i < Math.min(images.length, plan.length); i++) {
+    for (let i = 0; i < images.length; i++) {
       const dest = path.join(photoDir, `photo_${String(i + 1).padStart(2, "0")}.jpg`);
       if (!(fs.existsSync(dest) && fs.statSync(dest).size > 500)) {
         const buf = await downloadImageSafe(images[i]);
@@ -130,6 +127,19 @@ async function executePropJob(jobId: string): Promise<void> {
     const avatarDir = path.join(pub, "avatar");
     fs.mkdirSync(avatarDir, { recursive: true });
     const presenterPath = path.join(dir, "presenter.png");
+    const publicBase = (process.env.PUBLIC_BASE_URL || "").replace(/\/$/, "");
+    const requestsDir = path.join(dir, "requests");
+    fs.mkdirSync(requestsDir, { recursive: true });
+    function requestState(name: string) {
+      const file = path.join(requestsDir, name + ".json");
+      const resume: RequestHandle | undefined = fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, "utf8")) : undefined;
+      return { resume, onSubmitted: (handle: RequestHandle) => {
+        fs.writeFileSync(file, JSON.stringify(handle));
+        const stage: PropStage = name.startsWith("motion") ? "motion" : "avatar";
+        const ids = store.get(jobId)!.stages[stage].providerRequestIds || [];
+        store.updateStage(jobId, stage, { providerRequestIds: [...new Set([...ids, handle.requestId])] });
+      } };
+    }
     await stageRun("avatar", async () => {
       requireHf();
       const j = store.get(jobId)!;
@@ -138,10 +148,14 @@ async function executePropJob(jobId: string): Promise<void> {
         throw new Error("Presenter portrait missing — upload an avatar first");
       }
       // The public media server exposes /media/prop/<jobId>/... for Higgsfield fetches
-      const publicBase = (process.env.PUBLIC_BASE_URL || `http://127.0.0.1:8090`).replace(/\/$/, "");
+      const publicUrl = new URL(publicBase || "http://localhost");
+      if (publicUrl.protocol !== "https:" || /^(localhost|127\.|\[::1\])/.test(publicUrl.hostname)) {
+        throw new Error("Set PUBLIC_BASE_URL to the public HTTPS address of this server before avatar generation");
+      }
       const presenterUrl = `${publicBase}/media/prop/${jobId}/presenter.png`;
-      const ids: string[] = [];
+
       for (let i = 0; i < plan.length; i++) {
+        if (store.get(jobId)!.status === "canceled") throw new Error("canceled");
         const segAudioPublic = `${publicBase}/media/prop/${jobId}/audio/seg_${String(i + 1).padStart(2, "0")}.mp3`;
         const clipLocal = path.join(avatarDir, `seg_${String(i + 1).padStart(2, "0")}.mp4`);
         if (fs.existsSync(clipLocal) && fs.statSync(clipLocal).size > 10_000) {
@@ -149,34 +163,57 @@ async function executePropJob(jobId: string): Promise<void> {
           continue; // resume completed clip
         }
         const result = await hfAvatarSegment({
-          keyId, keySecret,
+          keyId, keySecret, ...requestState(`avatar_${i}`),
           imageUrl: presenterUrl,
           audioUrl: segAudioPublic,
-          prompt: "She presents a property listing with warm professional gestures, natural lip sync with the provided audio, subtle head movements, steady gaze",
-          durationSec: Math.max(2, Math.min(plan[i].durationSec + 0.5, 15)),
+          prompt: "The presenter introduces the property with restrained professional hand gestures, natural lip sync following the provided audio exactly, steady gaze and consistent appearance. Keep the same face and outfit.",
+          durationSec: plan[i].durationSec,
           aspectRatio: "9:16",
         });
-        ids.push(result.requestId);
-        const dl = await fetch(result.videoUrl);
+
+        const dl = await fetch(result.videoUrl, { signal: AbortSignal.timeout(120000) });
         if (!dl.ok) throw new Error(`Avatar clip download failed ${dl.status}`);
-        fs.writeFileSync(clipLocal, Buffer.from(await dl.arrayBuffer()));
+        const tmp = clipLocal + ".tmp";
+        fs.writeFileSync(tmp, Buffer.from(await dl.arrayBuffer()));
+        if (probeDuration(tmp) + 0.1 < plan[i].durationSec) throw new Error(`Avatar segment ${i + 1} is shorter than narration`);
+        fs.renameSync(tmp, clipLocal);
         plan[i].avatarClip = `avatar/seg_${String(i + 1).padStart(2, "0")}.mp4`;
       }
-      store.updateStage(jobId, "avatar", { providerRequestIds: ids });
+
     });
 
-    // Attach photos + captions to plan
+    // All selected photos participate independently of the narration segment count.
+    const gallery: GalleryAsset[] = photoFiles.map(photo => ({ photo }));
     const j = store.get(jobId)!;
-    const caps = plan.length;
-    for (let i = 0; i < plan.length; i++) {
-      plan[i].photoFile = photoFiles[i % Math.max(photoFiles.length, 1)] || undefined;
-      if (i === 0) plan[i].caption = j.listing.title;
-      else if (i === caps - 1) plan[i].caption = j.branding.contactLine || j.branding.agencyName;
+    await stageRun("motion", async () => {
+      const model = j.motionModel || "photo";
+      if (model === "photo") return;
+      requireHf();
+      const motionDir = path.join(pub, "motion");
+      fs.mkdirSync(motionDir, { recursive: true });
+      for (let i = 0; i < gallery.length; i++) {
+        if (store.get(jobId)!.status === "canceled") throw new Error("canceled");
+        const file = path.join(motionDir, `shot_${i}.mp4`);
+        if (!(fs.existsSync(file) && fs.statSync(file).size > 10000)) {
+          const result = await generateHiggsfield({ keyId, keySecret, endpoint: MOTION_MODELS[model].endpoint,
+            input: motionRequest(model, `${publicBase}/media/prop/${jobId}/${photoFiles[i]}`, i),
+            ...requestState(`motion_${i}`) });
+          const dl = await fetch(result.videoUrl, { signal: AbortSignal.timeout(120000) });
+          if (!dl.ok) throw new Error(`Motion download failed (${dl.status})`);
+          const tmp = file + ".tmp";
+          fs.writeFileSync(tmp, Buffer.from(await dl.arrayBuffer()));
+          probeDuration(tmp);
+          fs.renameSync(tmp, file);
+        }
+      }
+    });
+    if (j.motionModel && j.motionModel !== "photo") {
+      gallery.forEach((asset, i) => { asset.video = `motion/shot_${i}.mp4`; });
     }
 
     // ── compose: generate Remotion project ──────────────────────────
     await stageRun("compose", async () => {
-      generateRemotionProject({ jobDir: dir, plan, input: j, fps: 30 });
+      generateRemotionProject({ jobDir: dir, plan, input: j, fps: 30, gallery });
       fs.writeFileSync(path.join(renderDir, "remotion.config.ts"), REMOTION_CONFIG);
     });
 
@@ -191,6 +228,7 @@ async function executePropJob(jobId: string): Promise<void> {
       store.update(jobId, { actualDurationSec: Math.round(dur * 10) / 10 });
     });
 
+    if (store.get(jobId)!.status === "canceled") return;
     store.update(jobId, {
       status: "completed",
       output: { videoPath: outPath, bytes: fs.statSync(outPath).size },
