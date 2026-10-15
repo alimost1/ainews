@@ -4,10 +4,10 @@
  * composition + render.
  */
 import * as fs from "fs";
+import { prepareTransparentPresenter } from "./property-matte";
 import { generateHiggsfield, motionRequest, MOTION_MODELS, type RequestHandle } from "./property-models";
 import {
-  PRESENTER_MODEL, generateSoulImage, presenterDisclosure, presenterReferencePrompt,
-  presenterSceneRequest, presenterReferenceRequest, scenePrepPrompt, planPresenterShots,
+  generateSoulImage, presenterReferencePrompt, presenterReferenceRequest,
 } from "./property-presenter";
 import { prepareNarrationAudio } from "./property-audio";
 import type { GalleryAsset } from "./property-cinematic";
@@ -58,6 +58,11 @@ function npx() { return process.platform === "win32" ? "npx.cmd" : "npx"; }
 async function executePropJob(jobId: string): Promise<void> {
   let job = store.get(jobId);
   if (!job || job.status === "canceled") return;
+  const presenterMode = job.mode === "presenter";
+  if (presenterMode && job.presenterVersion !== "greenscreen-v2") {
+    store.update(jobId, {status:"failed",error:"This job uses the older presenter workflow. Create a new reviewed job for transparent presenter generation; existing paid clips were not regenerated."});
+    return;
+  }
   const { keyId, keySecret, elevenKey } = hfKeys();
   // Per-stage configuration gates: stages whose provider is unconfigured fail
   // with an explicit message; stages that CAN run still run (so partial
@@ -109,7 +114,7 @@ async function executePropJob(jobId: string): Promise<void> {
     segments = store.get(jobId)!.segments!;
     const plan: SegmentPlan[] = segments.map((seg, i) => ({
       text: seg.text, audioFile: `audio/seg_${String(i + 1).padStart(2, "0")}.mp3`,
-      avatarClip: `avatar/seg_${String(i + 1).padStart(2, "0")}.mp4`,
+      avatarClip: `avatar/seg_${presenterMode ? "greenscreen_v2_" : ""}${String(i + 1).padStart(2, "0")}.mp4`,
       durationSec: probeDuration(path.join(audioDir, `seg_${String(i + 1).padStart(2, "0")}.mp3`)),
     }));
 
@@ -148,7 +153,7 @@ async function executePropJob(jobId: string): Promise<void> {
         store.updateStage(jobId, stage, { providerRequestIds: [...new Set([...ids, handle.requestId])] });
       } };
     }
-    const presenterMode = store.get(jobId)!.mode === "presenter";
+
 
     // ── presenter: synthetic reference portrait (presenter mode only) ──
     await stageRun("presenter", async () => {
@@ -159,10 +164,10 @@ async function executePropJob(jobId: string): Promise<void> {
       if (publicUrl.protocol !== "https:" && publicUrl.protocol !== "http:" || /^(localhost|127\.|\[::1\])/.test(publicUrl.hostname)) {
         throw new Error("Set PUBLIC_BASE_URL to a public HTTPS/HTTP address of this server before presenter generation");
       }
-      const refFile = path.join(pub, "presenter.png");
+      const refFile = path.join(dir, "presenter_greenscreen_v2.png");
       if (!(fs.existsSync(refFile) && fs.statSync(refFile).size > 10_000)) {
         if (!photoFiles.length) throw new Error("Select at least one property photo");
-        const result = await generateSoulImage({ keyId, keySecret, ...requestState("presenter_ref"),
+        const result = await generateSoulImage({ keyId, keySecret, ...requestState("presenter_ref_greenscreen_v2"),
           input: presenterReferenceRequest(presenterReferencePrompt()) });
         const dl = await fetch(result.imageUrl, { signal: AbortSignal.timeout(120000) });
         if (!dl.ok) throw new Error(`Presenter reference download failed (${dl.status})`);
@@ -171,10 +176,9 @@ async function executePropJob(jobId: string): Promise<void> {
         fs.renameSync(tmp, refFile);
       }
     });
-    // sceneFiles must be declared before lipsync stage since lipsync runs before scenePrep
-    const sceneFiles: string[] = [];
+
     // ── lipsync: Wan 2.7 per segment (uploaded portrait in panel mode,
-    //    synthetic presenter-in-scene images in presenter mode) ──
+    //    synthetic green-screen reference in presenter mode) ──
     await stageRun("lipsync", async () => {
       requireHf();
       const j = store.get(jobId)!;
@@ -190,22 +194,22 @@ async function executePropJob(jobId: string): Promise<void> {
           throw new Error("Presenter portrait missing — upload an avatar first");
         }
       }
-      const panelUrl = `${publicBase}/media/prop/${jobId}/presenter.png`;
+      const panelUrl = `${publicBase}/media/prop/${jobId}/${presenterMode ? "presenter_greenscreen_v2.png" : "presenter.png"}`;
 
       for (let i = 0; i < plan.length; i++) {
         if (store.get(jobId)!.status === "canceled") throw new Error("canceled");
         const segAudioPublic = `${publicBase}/media/prop/${jobId}/audio/seg_${String(i + 1).padStart(2, "0")}.mp3`;
-        const clipLocal = path.join(avatarDir, `seg_${String(i + 1).padStart(2, "0")}.mp4`);
+        const clipLocal = path.join(pub, plan[i].avatarClip);
         if (fs.existsSync(clipLocal) && fs.statSync(clipLocal).size > 10_000) {
-          plan[i].avatarClip = `avatar/seg_${String(i + 1).padStart(2, "0")}.mp4`;
+
           continue; // resume completed clip
         }
-        const sceneUrl = presenterMode ? panelUrl : panelUrl;
+        const sceneUrl = panelUrl;
         const result = await hfAvatarSegment({
-          keyId, keySecret, ...requestState(`avatar_${i}`),
+          keyId, keySecret, ...requestState(`avatar_${presenterMode ? "greenscreen_v2_" : ""}${i}`),
           imageUrl: sceneUrl,
           audioUrl: segAudioPublic,
-          prompt: "The presenter introduces the property with restrained professional hand gestures, natural lip sync following the provided audio exactly, steady gaze and consistent appearance. Keep the same face and outfit.",
+          prompt: "The presenter speaks exactly the supplied audio with natural synchronized mouth movement, steady gaze, locked camera and restrained hand gestures. Preserve the same face and outfit. " + (presenterMode ? "Keep the background perfectly flat saturated chroma-key green RGB 0 255 0 throughout. No camera moves, scenery, gradients, shadows or green clothing. Keep hands and shoulders within the frame." : ""),
           durationSec: plan[i].durationSec,
           aspectRatio: "9:16",
         });
@@ -216,57 +220,26 @@ async function executePropJob(jobId: string): Promise<void> {
         fs.writeFileSync(tmp, Buffer.from(await dl.arrayBuffer()));
         if (probeDuration(tmp) + 0.1 < plan[i].durationSec) throw new Error(`Avatar segment ${i + 1} is shorter than narration`);
         fs.renameSync(tmp, clipLocal);
-        plan[i].avatarClip = `avatar/seg_${String(i + 1).padStart(2, "0")}.mp4`;
+
       }
 
     });
 
-        // ── scenePrep: composite presenter into each property photo with ffmpeg (presenter mode only) ──
-            const sceneDir = path.join(pub, "scenes");
-            fs.mkdirSync(sceneDir, { recursive: true });
-            await stageRun("scenePrep", async () => {
-              if (!presenterMode) { store.updateStage(jobId, "scenePrep", { status: "skipped" }); return; }
-              requireHf();
-              if (!fs.existsSync(path.join(pub, "presenter.png"))) throw new Error("Presenter reference missing — the presenter stage must complete first");
-              if (!fs.existsSync(path.join(pub, "avatar", "seg_01.mp4"))) throw new Error("Avatar clip missing — the lipsync stage must complete first");
-              // Use the first avatar clip as the presenter video (looped)
-              const presenterVideo = path.join(pub, "avatar", "seg_01.mp4");
-              for (let i = 0; i < photoFiles.length; i++) {
-                if (store.get(jobId)!.status === "canceled") throw new Error("canceled");
-                const srcPhoto = path.join(pub, photoFiles[i]);
-                const destScene = path.join(sceneDir, `scene_${String(i + 1).padStart(2, "0")}.jpg`);
-                if (fs.existsSync(destScene) && fs.statSync(destScene).size > 10_000) {
-                  sceneFiles.push(`scenes/scene_${String(i + 1).padStart(2, "0")}.jpg`);
-                  continue;
-                }
-                // Composite: overlay presenter video frame onto property photo
-                // Position presenter at different locations
-                const positions = ['left', 'right', 'center'];
-                const pos = positions[i % positions.length];
-                const xPos = pos === 'left' ? '0.12' : pos === 'right' ? '0.72' : '0.42';
-                const yPos = '0.58';
-                const scale = '0.38';
-                // ffmpeg: overlay video frame at position with shadow
-                const overlayFilter = `[1:v]scale=iw*${scale}:-1[ov];[0:v][ov]overlay=x=W*${xPos}-ow/2:y=H*${yPos}-oh:shortest=1,drawbox=x=W*${xPos}-ow/2:y=H*${yPos}+oh*0.9:w=ow*0.45:h=3:color=black@0.25:t=fill:enable='between(t,0,10)'[v];[v]boxblur=8:1[shadow];[0:v][shadow]overlay=x=W*${xPos}-ow/2:y=H*${yPos}+oh*0.9:w=ow*0.45:h=3:shortest=1`;
-                try {
-                  execFileSync("ffmpeg", [
-                    "-y", "-v", "error", "-i", srcPhoto,
-                    "-stream_loop", "-1", "-i", presenterVideo,
-                    "-filter_complex", overlayFilter,
-                    "-frames:v", "1", "-q:v", "2", destScene
-                  ], { timeout: 120000 });
-                } catch (e) {
-                  // Fallback: copy original photo
-                  fs.copyFileSync(srcPhoto, destScene);
-                }
-                if (fs.existsSync(destScene) && fs.statSync(destScene).size > 10_000) {
-                  sceneFiles.push(`scenes/scene_${String(i + 1).padStart(2, "0")}.jpg`);
-                } else {
-                  fs.copyFileSync(srcPhoto, destScene);
-                  sceneFiles.push(`scenes/scene_${String(i + 1).padStart(2, "0")}.jpg`);
-                }
-              }
-            });
+    // Key every complete moving speech clip to alpha; never flatten to a JPEG.
+    const alphaDir = path.join(pub, "presenter");
+    fs.mkdirSync(alphaDir, {recursive:true});
+    await stageRun("scenePrep", async () => {
+      if (!presenterMode) return;
+      for (let i=0; i<plan.length; i++) {
+        if (store.get(jobId)!.status === "canceled") throw new Error("canceled");
+        const alphaFile = path.join(alphaDir, `seg_${String(i+1).padStart(2,"0")}.webm`);
+        if (!fs.existsSync(alphaFile)) await prepareTransparentPresenter(path.join(pub, plan[i].avatarClip), alphaFile, plan[i].durationSec);
+      }
+    });
+    if (presenterMode) plan.forEach((segment,i) => {
+      segment.presenterAlpha = `presenter/seg_${String(i+1).padStart(2,"0")}.webm`;
+      if (!fs.existsSync(path.join(pub,segment.presenterAlpha))) throw new Error("Transparent presenter asset missing; retry scene preparation");
+    });
 
     // All selected photos participate independently of the narration segment count.
     const gallery: GalleryAsset[] = photoFiles.map(photo => ({ photo }));
@@ -297,20 +270,10 @@ async function executePropJob(jobId: string): Promise<void> {
       gallery.forEach((asset, i) => { asset.video = `motion/shot_${i}.mp4`; });
     }
 
-    // Build presenter gallery for presenter mode
-    let galleryFinal = gallery;
-    if (j.mode === "presenter") {
-      const avatarUrls = plan.map(s => s.avatarClip).filter(Boolean);
-      galleryFinal = planPresenterShots(
-        photoFiles,
-        avatarUrls
-      );
-    }
-
     // ── compose: generate Remotion project (mode: 'panel' default | 'presenter') ──
     await stageRun("compose", async () => {
       const mode = j.mode === "presenter" ? "presenter" : "panel";
-      generateRemotionProject({ jobDir: dir, plan, input: j, fps: 30, gallery: galleryFinal, mode });
+      generateRemotionProject({ jobDir: dir, plan, input: j, fps: 30, gallery, mode });
       const vendorChrome = path.join(ROOT, "vendor", "chrome-headless-shell", "chrome-headless-shell-linux64", "chrome-headless-shell");
       fs.writeFileSync(path.join(renderDir, "remotion.config.ts"),
         makeRemotionConfig(fs.existsSync(vendorChrome) ? vendorChrome : (process.env.REMOTION_BROWSER_EXECUTABLE || null)));

@@ -597,9 +597,9 @@ const server = http.createServer(async (req, res) => {
     return;
   }
   // Presenter portraits: /media/prop/<jobId>/presenter.png
-  const presenterMatch = pathname.match(/^\/media\/prop\/([a-zA-Z0-9-]+)\/presenter\.png$/);
+  const presenterMatch = pathname.match(/^\/media\/prop\/([a-zA-Z0-9-]+)\/(presenter(?:_greenscreen_v2)?\.png)$/);
   if (presenterMatch && req.method === 'GET') {
-    const filePath = path.join(PROJECT, 'data', 'prop-jobs', presenterMatch[1], 'presenter.png');
+    const filePath = path.join(PROJECT, 'data', 'prop-jobs', presenterMatch[1], presenterMatch[2]);
     if (fs.existsSync(filePath)) {
       res.writeHead(200, { 'Content-Type': 'image/png', 'Content-Length': fs.statSync(filePath).size, 'Access-Control-Allow-Origin': '*' });
       fs.createReadStream(filePath).pipe(res);

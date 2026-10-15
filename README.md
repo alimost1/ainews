@@ -302,3 +302,39 @@ submission until provider billing confirms whether it was accepted.
 
 Validation: `npm run typecheck`, `npm run build:dashboard`, and `npm test`.
 Automated tests use mocked providers and do not spend API credits.
+
+
+### Fast ads with a transparent presenter (PR #5 follow-up)
+
+Select **Présentateur détouré transparent** and **Publicité dynamique** at `/property`.
+New presenter jobs create one uniform green-screen reference, generate one speaking
+clip per narration segment using that exact audio, and key the moving clips to
+VP9 WebM with alpha locally. Remotion decodes them with `OffthreadVideo transparent`.
+The presenter has no rectangular background or border. Property images remain
+separate and can change every two seconds without restarting the speaker.
+The ad layout fills the portrait canvas (landscape photos are cropped); choose
+**Visite calme** for the slower contained-photo layout. Inspect framing before use.
+
+The clip for narration segment N starts at the same frame as audio N. It is never
+looped, sped up or restarted on a property cut. Duration checks catch truncated
+clips. This fixes edit-induced lip-sync drift; model-generated mouth accuracy still
+requires human review of a real generation. No automatic regeneration is billed.
+
+Background removal requires a clean green source. The generated portrait and
+video prompts specify uniform RGB 0,255,0, navy/white clothing and unobstructed
+mouth/hands. Alpha is checked at the start, middle and end. Failed removal stops
+the job visibly instead of copying a still or hiding the presenter. It does not
+claim to remove arbitrary uploaded backgrounds. Uploaded portraits remain available
+in the optional panel mode, which now renders correctly again.
+
+Previously created presenter jobs are not silently regenerated with paid models.
+Create a new reviewed job for the transparent workflow; it is versioned separately
+from existing grey-background clips and provider handles. Billing is one generated
+reference plus per-segment speaking video, with no per-photo scene-edit charge.
+
+Start with `npm run build:dashboard` then `npm run start:server` in the repository.
+Use the existing provider credentials and public media base URL. The generated
+reference is now saved at the exact path served to Higgsfield. FFmpeg must include
+`colorkey`, `despill` and `libvpx-vp9`. Tests execute real local FFmpeg matte operations
+and mocked providers; live presenter identity, mouth quality and green-screen
+consistency need deployment validation before an ad is published.

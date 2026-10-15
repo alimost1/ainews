@@ -36,7 +36,9 @@ export interface PropJobRecord {
   listing: PropJobInput["listing"];
   branding: PropJobInput["branding"];
   avatarProvided: boolean;
+  editStyle?: import("./property-cinematic").EditStyle;
   motionModel?: import("./property-models").PropertyMotion;
+  presenterVersion?: "greenscreen-v2";
   mode?: import("./property-presenter").ComposeMode;
   stages: Record<PropStage, PropStageRecord>;
   segments?: { text: string; audioSec?: number }[];
@@ -102,7 +104,7 @@ export class PropJobStore {
     stages.extract.status = "completed"; // extraction happened before draft creation
     const job: PropJobRecord = {
       id, status: "draft", createdAt: now, updatedAt: now,
-      stages, ...input,
+      stages, ...input, presenterVersion: input.mode === "presenter" ? "greenscreen-v2" : undefined,
     };
     this.jobs[id] = job;
     fs.mkdirSync(propJobDir(id), { recursive: true });

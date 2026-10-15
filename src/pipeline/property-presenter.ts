@@ -1,15 +1,6 @@
-/**
- * property-presenter.ts — "Presenter in-scene" mode configuration and prompts.
- *
- * A synthetic male Moroccan presenter (waist-up, navy blazer) is edited INTO
- * selected listing photos via reference-guided image-to-image on Higgsfield
- * `higgsfield-ai/soul/v2/image-to-image` (image_url = property photo, prompt =
- * scene-prep prompt), then lip-synced with Wan 2.7 image-to-video. Presenter
- * scenes are alternated with property-only shots in the Remotion composition.
- *
- * Billing safety: default compose mode is 'panel' — no presenter/scenePrep
- * provider calls are made in panel mode, and the images generated in presenter
- * mode are billed per image at account rates (never hidden from the user).
+/** Synthetic green-screen reference and resumable image generation.
+ * The speaking clip is keyed to alpha locally and laid over unedited property
+ * imagery on the narration clock. Gallery cuts never restart the presenter.
  */
 import type { GalleryAsset } from "./property-cinematic";
 import type { PropJobInput } from "./property-presentation";
@@ -33,11 +24,11 @@ export function presenterDisclosure(language: "fr" | "ar" | "en"): string {
 export function presenterReferencePrompt(language: string = "fr"): string {
   void language; // prompt is language-independent; identity kept consistent
   return [
-    "A photorealistic portrait of a professional Moroccan real estate agent, approximately 35-45 years old.",
-    "Waist-up, smart business casual: navy blue blazer, crisp white shirt, open collar, no tie.",
+    "A photorealistic single person, a synthetic male Moroccan presenter and professional real estate agent, approximately 35-45 years old.",
+    "Waist-up with complete shoulders, arms and hands inside the frame. Navy blazer, crisp white shirt, open collar, no tie.",
     "Short dark hair, well-groomed, warm confident smile, direct eye contact with camera.",
     "Natural skin texture with subtle imperfections, professional lighting with soft key light.",
-    "Clean neutral warm-grey studio background, no harsh shadows, high-end corporate headshot style.",
+    "Perfectly uniform flat saturated chroma-key green background, RGB 0 255 0, edge to edge. No scenery, shadows, gradients, texture, green clothing or green accessories. Camera locked off. Mouth unobstructed and face forward.",
     "Approachable, trustworthy, knowledgeable expression - like a top real estate professional.",
     "Sharp focus on face and eyes, 85mm lens portrait aesthetic, high detail, 8K quality.",
   ].join(" ");
@@ -47,6 +38,7 @@ export function presenterReferencePrompt(language: string = "fr"): string {
  * Scene-prep prompt: edit the presenter into the actual listing photo.
  * MUST keep the photo (and any agency watermarks) intact.
  */
+/** @deprecated Not used by the transparent presenter pipeline. */
 export function scenePrepPrompt(input: PropJobInput): string {
   const kind = /villa|دار/i.test(input.listing.title) ? "villa" : "property";
   return [
@@ -60,6 +52,7 @@ export function scenePrepPrompt(input: PropJobInput): string {
 }
 
 /** Payload for the soul/v2 image-to-image request. imageUrl must be public HTTPS. */
+/** @deprecated Not used: Soul Standard is text-to-image, not a scene editor. */
 export function presenterSceneRequest(imageUrl: string, prompt: string) {
   if (!/^https:\/\/[^/]/.test(imageUrl)) throw new Error("Scene reference image must be a public https URL");
   return { image_url: imageUrl, prompt, strength: 0.45, quality: "high" };
@@ -67,7 +60,7 @@ export function presenterSceneRequest(imageUrl: string, prompt: string) {
 
 /** Payload for the soul/v2 text-to-image reference portrait. */
 export function presenterReferenceRequest(prompt: string) {
-  return { prompt, aspect_ratio: "9:16", resolution: "1080p", batch_size: 1, enhance_prompt: true };
+  return { prompt, aspect_ratio: "9:16", resolution: "1080p", batch_size: 1, enhance_prompt: false };
 }
 
 export type ComposeMode = "panel" | "presenter";
@@ -83,23 +76,10 @@ export function validatePresenterMode(value: unknown): ComposeMode {
  * the property photos are returned unchanged (panel mode stays untouched).
  */
 export function planPresenterShots(photos: string[], avatarUrls: string[]): GalleryAsset[] {
-  const assets: GalleryAsset[] = [];
-  if (!avatarUrls.length) return photos.map(photo => ({ photo }));
-  const total = photos.length + avatarUrls.length;
-  let p = 0, a = 0;
-  const positions: ('left' | 'right' | 'center')[] = ['left', 'right', 'center'];
-  for (let i = 0; i < total; i++) {
-    if (a < avatarUrls.length && i % 2 === 1) {
-      assets.push({ photo: photos[p], presenter: true, avatar: avatarUrls[a], presenterPos: positions[a % positions.length] });
-      a++; p++;
-    } else if (p < photos.length) {
-      assets.push({ photo: photos[p++] });
-    } else if (a < avatarUrls.length) {
-      assets.push({ photo: photos[p], presenter: true, avatar: avatarUrls[a], presenterPos: positions[a % positions.length] });
-      a++; p++;
-    }
-  }
-  return assets;
+  // Presenter playback belongs to the narration timeline, never the gallery timeline.
+  // Gallery video paths are property motion clips only; preserve all source photos.
+  void avatarUrls;
+  return photos.map(photo => ({ photo }));
 }
 
 /**
@@ -135,6 +115,8 @@ export async function generateSoulImage(opts: {
     handle = { requestId: body.request_id, statusUrl: statusUrl.href };
     (opts.onSubmitted || (() => {}))(handle);
   }
+  const statusUrl = new URL(handle.statusUrl);
+  if (statusUrl.origin !== API || statusUrl.username || statusUrl.password) throw new Error("Unexpected provider status URL");
   const wait = opts.wait || (ms => new Promise(resolve => setTimeout(resolve, ms)));
   const deadline = Date.now() + 10 * 60 * 1000;
   let delay = 1200;

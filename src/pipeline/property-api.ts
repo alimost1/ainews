@@ -14,6 +14,7 @@
  * All provider keys stay server-side; responses never include them.
  */
 import * as http from "http";
+import { validateEditStyle } from "./property-cinematic";
 import { MOTION_MODELS, validateMotion } from "./property-models";
 import { PRESENTER_MODEL, validatePresenterMode } from "./property-presenter";
 import * as fs from "fs";
@@ -71,10 +72,10 @@ export function propertyCapabilities() {
       provider: "Higgsfield",
       model: PRESENTER_MODEL.id,
       verifiedEndpoint: `POST ${PRESENTER_MODEL.url}`,
-      params: { image_url: "property photo URL", prompt: "photorealistic male presenter beside the villa (watermarks preserved)" },
+      params: { prompt: "single consistent male presenter on uniform green screen" },
       disclosure: "AI-generated presenter disclosure is rendered on every presenter-mode video",
       defaultMode: "panel", // panel mode never bills the presenter/scenePrep models
-      imageGenerations: "1 presenter reference + 1 scene edit per selected photo",
+      imageGenerations: "1 green-screen reference; audio-driven video per narration segment; local alpha removal",
     },
     tts: {
       supported: elevenConfigured,
@@ -104,6 +105,7 @@ function validateDraft(body: any) {
     ? listing.images.filter((i: unknown) => typeof i === "string" && /^https?:\/\//.test(i) || typeof i === "string" && i.startsWith("uploaded:")).slice(0, 20)
     : [];
   return {
+    editStyle: validateEditStyle(body.editStyle),
     mode: validatePresenterMode(body.mode),
     motionModel: validateMotion(body.motionModel),
     sourceUrl: str(body.sourceUrl, 500) || "",
@@ -150,10 +152,10 @@ export async function handlePropertyApi(req: http.IncomingMessage, res: http.Ser
     json(res, 200, { ...caps, costEstimate: { ...est,
       presenterMode: {
         referenceImages: 1,
-        sceneImagesPerPhoto: 1,
+        sceneImagesPerPhoto: 0,
         examplePhotos: photoCountHint,
-        exampleImageTotal: 1 + photoCountHint,
-        note: "Presenter mode bills Higgsfield soul/v2 image-to-image per generated image; the panel default never calls it.",
+        exampleImageTotal: 1,
+        note: "Presenter mode generates one green-screen reference and lip-sync clips. Background removal is local, not an image generation per photo.",
         model: PRESENTER_MODEL.id,
       } }, queue: propQueueStats() });
     return true;
@@ -206,6 +208,7 @@ export async function handlePropertyApi(req: http.IncomingMessage, res: http.Ser
         language: draft.language,
         motionModel: draft.motionModel,
         mode: draft.mode,
+        editStyle: draft.editStyle,
         voiceId: draft.voiceId,
         narration: draft.narration,
         listing: draft.listing,
