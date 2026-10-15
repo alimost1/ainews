@@ -1,5 +1,5 @@
 import React from 'react';
-import { AbsoluteFill, Audio, Img, OffthreadVideo, Sequence, Video, interpolate, staticFile, useCurrentFrame } from 'remotion';
+import { AbsoluteFill, Audio, Img, OffthreadVideo, Sequence, interpolate, staticFile, useCurrentFrame } from 'remotion';
 
 export interface PresentationData {
   fps: number; rtl: boolean; totalFrames: number; language?: string;
@@ -7,17 +7,20 @@ export interface PresentationData {
   agency: string; contact: string; highlights: string[]; closing: string; aiMotion: boolean;
   mode?: 'panel' | 'presenter'; disclosure?: string;
   segments: { from: number; duration: number; audio: string; avatar: string }[];
-  shots: { from: number; duration: number; index: number; photo: string; video?: string; blur?: string; presenter?: boolean }[];
+  shots: { from: number; duration: number; index: number; photo: string; video?: string; blur?: string; presenter?: boolean; avatar?: string; presenterPos?: 'left' | 'right' | 'center' }[];
 }
+
 const clamp = { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' } as const;
 const gold = '#E7C58A';
+
+/** Photo component - uses pre-composited scene images for presenter mode. */
 const Photo: React.FC<{ shot: PresentationData['shots'][number]; fps: number }> = ({ shot, fps }) => {
-  const frame = useCurrentFrame(); // Sequence-local: never subtract global shot.from here.
+  const frame = useCurrentFrame();
   const progress = interpolate(frame, [0, shot.duration], [0, 1], clamp);
   const fade = shot.index === 0 ? 1 : interpolate(frame, [0, fps * .4], [0, 1], clamp);
   const scale = shot.index % 2 ? 1.08 - progress * .06 : 1.02 + progress * .06;
   const x = (shot.index % 2 ? -1 : 1) * (progress - .5) * 22;
-  // Background uses a pre-blurred asset (composed offline) so the static layer rasterizes once.
+
   return <AbsoluteFill style={{ opacity: fade, background: '#101716' }}>
     <Img src={staticFile(shot.blur || shot.photo)} style={{ width: '100%', height: '100%', objectFit: 'cover', filter: `brightness(.4)${shot.blur ? '' : ' blur(40px)'}`, transform: 'scale(1.15)' }} />
     <AbsoluteFill style={{ justifyContent: 'center', transform: `translateX(${x}px) scale(${scale})` }}>
@@ -26,6 +29,7 @@ const Photo: React.FC<{ shot: PresentationData['shots'][number]; fps: number }> 
     </AbsoluteFill>
   </AbsoluteFill>;
 };
+
 export const PropertyPresentation: React.FC<PresentationData> = data => {
   const frame = useCurrentFrame();
   const opening = frame < data.fps * 3;
@@ -36,6 +40,7 @@ export const PropertyPresentation: React.FC<PresentationData> = data => {
   const opacity = interpolate(frame, [0, 16], [0, 1], clamp);
   const panelWidth = opening || closing ? 290 : 230;
   const presenterMode = data.mode === 'presenter';
+
   return <AbsoluteFill style={{ background: '#101716', color: 'white', fontFamily: "'Noto Sans Arabic','Segoe UI',Tahoma,sans-serif", direction: data.rtl ? 'rtl' : 'ltr' }}>
     {data.shots.map(s => <Sequence key={s.index} from={s.from} durationInFrames={s.duration}><Photo shot={s} fps={data.fps} /></Sequence>)}
     <AbsoluteFill style={{ background: 'linear-gradient(180deg,rgba(6,18,17,.85),transparent 30%,transparent 52%,rgba(6,18,17,.96))' }} />
@@ -49,11 +54,7 @@ export const PropertyPresentation: React.FC<PresentationData> = data => {
     </div>
     {data.segments.map((s, i) => <Sequence key={i} from={s.from} durationInFrames={s.duration}>
       <Audio src={staticFile(s.audio)} />
-      {!presenterMode &&
-        <div style={{ position: 'absolute', right: data.rtl ? undefined : 48, left: data.rtl ? 48 : undefined, bottom: 460,
-          width: panelWidth, height: panelWidth * 1.3, borderRadius: 22, overflow: 'hidden', border: '2px solid rgba(231,197,138,.7)', boxShadow: '0 16px 46px #0008' }}>
-          <Video src={staticFile(s.avatar)} muted style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-        </div>}
+      {/* In presenter mode, avatar is composited in-scene via ffmpeg pre-compositing; no side panel */}
     </Sequence>)}
     {presenterMode && <div style={{ position: 'absolute', top: 40, left: 64, fontSize: 20, color: '#d8e0dd', background: 'rgba(6,18,17,.6)', padding: '6px 14px', borderRadius: 8 }}>{data.disclosure}</div>}
     <div style={{ position: 'absolute', left: 64, right: 64, bottom: 180 }}>
@@ -64,12 +65,11 @@ export const PropertyPresentation: React.FC<PresentationData> = data => {
       <div style={{ color: gold, fontSize: 38, marginTop: 20 }}>{closing ? data.contact || data.price : data.price}</div>
     </div>
     <div style={{ position: 'absolute', bottom: 112, left: 64, right: 64, display: 'flex', justifyContent: 'space-between', fontSize: 19, color: '#d8e0dd' }}>
-      <span>{data.language === 'ar' ? (data.aiMotion ? 'حركة بالذكاء الاصطناعي · صور الإعلان' : 'صور الإعلان') : data.language === 'en' ? (data.aiMotion ? 'AI motion · Listing photos' : 'Listing photos') : data.aiMotion ? 'Mouvement IA · Photos de l’annonce' : 'Photos de l’annonce'}</span>
+      <span>{data.language === 'ar' ? (data.aiMotion ? 'حركة بالذكاء الاصطناعي · صور الإعلان' : 'صور الإعلان') : data.language === 'en' ? (data.aiMotion ? 'AI motion · Listing photos' : 'Listing photos') : data.aiMotion ? 'Mouvement IA · Photos de l\'annonce' : 'Photos de l\'annonce'}</span>
       <span>{String(Math.max(0, active) + 1).padStart(2, '0')} / {String(data.segments.length).padStart(2, '0')}</span>
     </div>
     <div style={{ position: 'absolute', bottom: 88, left: 64, right: 64, height: 3, background: '#ffffff30' }}>
       <div style={{ height: '100%', width: `${100 * frame / Math.max(1, data.totalFrames - 1)}%`, background: gold }} />
     </div>
   </AbsoluteFill>;
-
 };

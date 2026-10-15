@@ -540,6 +540,27 @@ const server = http.createServer(async (req, res) => {
     res.end(html);
     return;
   }
+  if (pathname === '/api/debug/test-hf' && req.method === 'GET') {
+    try {
+      const keyId = process.env.HF_API_KEY_ID || "";
+      const keySecret = process.env.HF_API_KEY_SECRET || "";
+      const auth = `Key ${keyId}:${keySecret}`;
+      const payload = { prompt: "test", aspect_ratio: "9:16", resolution: "1080p", batch_size: 1, enhance_prompt: true };
+      const response = await fetch("https://api.higgsfield.ai/higgsfield-ai/soul/v2/standard", {
+        method: "POST",
+        headers: { Authorization: auth, "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+        signal: AbortSignal.timeout(60000)
+      });
+      const body = await response.json();
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ status: response.status, body: JSON.stringify(body).substring(0, 300) }));
+    } catch (e) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: String(e) }));
+    }
+    return;
+  }
   if (pathname.startsWith('/api/property/')) {
     if (!propertyApi) {
       res.writeHead(503, { 'Content-Type': 'application/json' });

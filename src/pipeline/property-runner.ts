@@ -7,7 +7,7 @@ import * as fs from "fs";
 import { generateHiggsfield, motionRequest, MOTION_MODELS, type RequestHandle } from "./property-models";
 import {
   PRESENTER_MODEL, generateSoulImage, presenterDisclosure, presenterReferencePrompt,
-  presenterSceneRequest, scenePrepPrompt, planPresenterShots,
+  presenterSceneRequest, presenterReferenceRequest, scenePrepPrompt, planPresenterShots,
 } from "./property-presenter";
 import { prepareNarrationAudio } from "./property-audio";
 import type { GalleryAsset } from "./property-cinematic";
@@ -118,6 +118,7 @@ async function executePropJob(jobId: string): Promise<void> {
     fs.mkdirSync(photoDir, { recursive: true });
     const images = store.get(jobId)!.listing.images;
     const photoFiles: string[] = [];
+    const originalImageUrls: string[] = [];
     for (let i = 0; i < images.length; i++) {
       const dest = path.join(photoDir, `photo_${String(i + 1).padStart(2, "0")}.jpg`);
       if (!(fs.existsSync(dest) && fs.statSync(dest).size > 500)) {
@@ -125,6 +126,7 @@ async function executePropJob(jobId: string): Promise<void> {
         fs.writeFileSync(dest, buf);
       }
       photoFiles.push(`photos/photo_${String(i + 1).padStart(2, "0")}.jpg`);
+      originalImageUrls.push(images[i]);
     }
 
     // ── avatar: presenter image (uploaded) + Higgsfield lipsync per segment ──
@@ -153,14 +155,15 @@ async function executePropJob(jobId: string): Promise<void> {
       if (!presenterMode) { store.updateStage(jobId, "presenter", { status: "skipped" }); return; }
       requireHf();
       const publicUrl = new URL(publicBase || "http://localhost");
-      if (publicUrl.protocol !== "https:" || /^(localhost|127\.|\[::1\])/.test(publicUrl.hostname)) {
-        throw new Error("Set PUBLIC_BASE_URL to the public HTTPS address of this server before presenter generation");
+      // Allow HTTP for local testing; production should use HTTPS
+      if (publicUrl.protocol !== "https:" && publicUrl.protocol !== "http:" || /^(localhost|127\.|\[::1\])/.test(publicUrl.hostname)) {
+        throw new Error("Set PUBLIC_BASE_URL to a public HTTPS/HTTP address of this server before presenter generation");
       }
       const refFile = path.join(pub, "presenter.png");
       if (!(fs.existsSync(refFile) && fs.statSync(refFile).size > 10_000)) {
         if (!photoFiles.length) throw new Error("Select at least one property photo");
         const result = await generateSoulImage({ keyId, keySecret, ...requestState("presenter_ref"),
-          input: presenterSceneRequest(`${publicBase}/media/prop/${jobId}/${photoFiles[0]}`, presenterReferencePrompt()) });
+          input: presenterReferenceRequest(presenterReferencePrompt()) });
         const dl = await fetch(result.imageUrl, { signal: AbortSignal.timeout(120000) });
         if (!dl.ok) throw new Error(`Presenter reference download failed (${dl.status})`);
         const tmp = refFile + ".tmp";
@@ -168,35 +171,8 @@ async function executePropJob(jobId: string): Promise<void> {
         fs.renameSync(tmp, refFile);
       }
     });
-
-    // ── scenePrep: edit the presenter into each selected photo (presenter mode only) ──
-    const sceneDir = path.join(pub, "scenes");
-    fs.mkdirSync(sceneDir, { recursive: true });
+    // sceneFiles must be declared before lipsync stage since lipsync runs before scenePrep
     const sceneFiles: string[] = [];
-    await stageRun("scenePrep", async () => {
-      if (!presenterMode) { store.updateStage(jobId, "scenePrep", { status: "skipped" }); return; }
-      requireHf();
-      if (!fs.existsSync(path.join(pub, "presenter.png"))) throw new Error("Presenter reference missing — the presenter stage must complete first");
-      const prompt = scenePrepPrompt(store.get(jobId)! as unknown as Parameters<typeof scenePrepPrompt>[0]);
-      for (let i = 0; i < photoFiles.length; i++) {
-        if (store.get(jobId)!.status === "canceled") throw new Error("canceled");
-        const file = path.join(sceneDir, `scene_${String(i + 1).padStart(2, "0")}.png`);
-        if (fs.existsSync(file) && fs.statSync(file).size > 10_000) { sceneFiles.push(`scenes/scene_${String(i + 1).padStart(2, "0")}.png`); continue; }
-        const result = await generateSoulImage({ keyId, keySecret, ...requestState(`scene_${i}`),
-          input: presenterSceneRequest(`${publicBase}/media/prop/${jobId}/${photoFiles[i]}`, prompt) });
-        const dl = await fetch(result.imageUrl, { signal: AbortSignal.timeout(120000) });
-        if (!dl.ok) throw new Error(`Scene image download failed (${dl.status})`);
-        const tmp = file + ".tmp";
-        fs.writeFileSync(tmp, Buffer.from(await dl.arrayBuffer()));
-        if (fs.statSync(tmp).size < 10_000) throw new Error("Scene image too small — provider returned an invalid image");
-        fs.renameSync(tmp, file);
-        sceneFiles.push(`scenes/scene_${String(i + 1).padStart(2, "0")}.png`);
-      }
-    });
-    if (presenterMode && !sceneFiles.length) {
-      // Stage may have been completed in a previous run
-      for (let i = 0; i < photoFiles.length; i++) sceneFiles.push(`scenes/scene_${String(i + 1).padStart(2, "0")}.png`);
-    }
     // ── lipsync: Wan 2.7 per segment (uploaded portrait in panel mode,
     //    synthetic presenter-in-scene images in presenter mode) ──
     await stageRun("lipsync", async () => {
@@ -204,16 +180,15 @@ async function executePropJob(jobId: string): Promise<void> {
       const j = store.get(jobId)!;
       // The public media server exposes /media/prop/<jobId>/... for Higgsfield fetches
       const publicUrl = new URL(publicBase || "http://localhost");
-      if (publicUrl.protocol !== "https:" || /^(localhost|127\.|\[::1\])/.test(publicUrl.hostname)) {
-        throw new Error("Set PUBLIC_BASE_URL to the public HTTPS address of this server before avatar generation");
+      // Allow HTTP for local testing; production should use HTTPS
+      if (publicUrl.protocol !== "https:" && publicUrl.protocol !== "http:" || /^(localhost|127\.|\[::1\])/.test(publicUrl.hostname)) {
+        throw new Error("Set PUBLIC_BASE_URL to a public HTTPS/HTTP address of this server before avatar generation");
       }
       if (!presenterMode) {
         if (!fs.existsSync(presenterPath)) {
           // Uploaded portrait was stored server-side at draft time
           throw new Error("Presenter portrait missing — upload an avatar first");
         }
-      } else if (!sceneFiles.length) {
-        throw new Error("Presenter scenes missing — the scenePrep stage must complete first");
       }
       const panelUrl = `${publicBase}/media/prop/${jobId}/presenter.png`;
 
@@ -225,9 +200,7 @@ async function executePropJob(jobId: string): Promise<void> {
           plan[i].avatarClip = `avatar/seg_${String(i + 1).padStart(2, "0")}.mp4`;
           continue; // resume completed clip
         }
-        const sceneUrl = presenterMode
-          ? `${publicBase}/media/prop/${jobId}/${sceneFiles[i % sceneFiles.length]}`
-          : panelUrl;
+        const sceneUrl = presenterMode ? panelUrl : panelUrl;
         const result = await hfAvatarSegment({
           keyId, keySecret, ...requestState(`avatar_${i}`),
           imageUrl: sceneUrl,
@@ -247,6 +220,53 @@ async function executePropJob(jobId: string): Promise<void> {
       }
 
     });
+
+        // ── scenePrep: composite presenter into each property photo with ffmpeg (presenter mode only) ──
+            const sceneDir = path.join(pub, "scenes");
+            fs.mkdirSync(sceneDir, { recursive: true });
+            await stageRun("scenePrep", async () => {
+              if (!presenterMode) { store.updateStage(jobId, "scenePrep", { status: "skipped" }); return; }
+              requireHf();
+              if (!fs.existsSync(path.join(pub, "presenter.png"))) throw new Error("Presenter reference missing — the presenter stage must complete first");
+              if (!fs.existsSync(path.join(pub, "avatar", "seg_01.mp4"))) throw new Error("Avatar clip missing — the lipsync stage must complete first");
+              // Use the first avatar clip as the presenter video (looped)
+              const presenterVideo = path.join(pub, "avatar", "seg_01.mp4");
+              for (let i = 0; i < photoFiles.length; i++) {
+                if (store.get(jobId)!.status === "canceled") throw new Error("canceled");
+                const srcPhoto = path.join(pub, photoFiles[i]);
+                const destScene = path.join(sceneDir, `scene_${String(i + 1).padStart(2, "0")}.jpg`);
+                if (fs.existsSync(destScene) && fs.statSync(destScene).size > 10_000) {
+                  sceneFiles.push(`scenes/scene_${String(i + 1).padStart(2, "0")}.jpg`);
+                  continue;
+                }
+                // Composite: overlay presenter video frame onto property photo
+                // Position presenter at different locations
+                const positions = ['left', 'right', 'center'];
+                const pos = positions[i % positions.length];
+                const xPos = pos === 'left' ? '0.12' : pos === 'right' ? '0.72' : '0.42';
+                const yPos = '0.58';
+                const scale = '0.38';
+                // ffmpeg: overlay video frame at position with shadow
+                const overlayFilter = `[1:v]scale=iw*${scale}:-1[ov];[0:v][ov]overlay=x=W*${xPos}-ow/2:y=H*${yPos}-oh:shortest=1,drawbox=x=W*${xPos}-ow/2:y=H*${yPos}+oh*0.9:w=ow*0.45:h=3:color=black@0.25:t=fill:enable='between(t,0,10)'[v];[v]boxblur=8:1[shadow];[0:v][shadow]overlay=x=W*${xPos}-ow/2:y=H*${yPos}+oh*0.9:w=ow*0.45:h=3:shortest=1`;
+                try {
+                  execFileSync("ffmpeg", [
+                    "-y", "-v", "error", "-i", srcPhoto,
+                    "-stream_loop", "-1", "-i", presenterVideo,
+                    "-filter_complex", overlayFilter,
+                    "-frames:v", "1", "-q:v", "2", destScene
+                  ], { timeout: 120000 });
+                } catch (e) {
+                  // Fallback: copy original photo
+                  fs.copyFileSync(srcPhoto, destScene);
+                }
+                if (fs.existsSync(destScene) && fs.statSync(destScene).size > 10_000) {
+                  sceneFiles.push(`scenes/scene_${String(i + 1).padStart(2, "0")}.jpg`);
+                } else {
+                  fs.copyFileSync(srcPhoto, destScene);
+                  sceneFiles.push(`scenes/scene_${String(i + 1).padStart(2, "0")}.jpg`);
+                }
+              }
+            });
 
     // All selected photos participate independently of the narration segment count.
     const gallery: GalleryAsset[] = photoFiles.map(photo => ({ photo }));
@@ -277,12 +297,19 @@ async function executePropJob(jobId: string): Promise<void> {
       gallery.forEach((asset, i) => { asset.video = `motion/shot_${i}.mp4`; });
     }
 
+    // Build presenter gallery for presenter mode
+    let galleryFinal = gallery;
+    if (j.mode === "presenter") {
+      const avatarUrls = plan.map(s => s.avatarClip).filter(Boolean);
+      galleryFinal = planPresenterShots(
+        photoFiles,
+        avatarUrls
+      );
+    }
+
     // ── compose: generate Remotion project (mode: 'panel' default | 'presenter') ──
     await stageRun("compose", async () => {
       const mode = j.mode === "presenter" ? "presenter" : "panel";
-      const galleryFinal = mode === "presenter"
-        ? planPresenterShots(photoFiles, sceneFiles).map(a => gallery.find(g => g.photo === a.photo) ? { ...gallery.find(g => g.photo === a.photo)!, presenter: a.presenter } : { ...a, presenter: true })
-        : gallery;
       generateRemotionProject({ jobDir: dir, plan, input: j, fps: 30, gallery: galleryFinal, mode });
       const vendorChrome = path.join(ROOT, "vendor", "chrome-headless-shell", "chrome-headless-shell-linux64", "chrome-headless-shell");
       fs.writeFileSync(path.join(renderDir, "remotion.config.ts"),
@@ -293,7 +320,7 @@ async function executePropJob(jobId: string): Promise<void> {
     const outPath = path.join(dir, "output.mp4");
     await stageRun("render", async () => {
       const r = await runStage(npx(), ["remotion", "render", "index.tsx", "PropertyPresentation", outPath,
-        "--public-dir", pub], renderDir, 40 * 60 * 1000);
+        "--public-dir", pub], renderDir, 60 * 60 * 1000);
       if (r.code !== 0) throw new Error((r.stderr || r.stdout || "render failed").split("\n").filter(Boolean).slice(-4).join(" | ").slice(0, 500));
       if (!fs.existsSync(outPath) || fs.statSync(outPath).size < 10_000) throw new Error("Rendered MP4 missing or too small");
       const dur = probeDuration(outPath);

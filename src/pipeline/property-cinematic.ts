@@ -1,5 +1,5 @@
 /** Frame-based edit decisions. Narration and picture edits use independent timelines. */
-export interface GalleryAsset { photo: string; video?: string; blur?: string; presenter?: boolean }
+export interface GalleryAsset { photo: string; video?: string; blur?: string; presenter?: boolean; avatar?: string; presenterPos?: 'left' | 'right' | 'center' }
 export interface GalleryShot extends GalleryAsset { from: number; duration: number; index: number }
 export function planGallery(assets: GalleryAsset[], totalFrames: number, fps = 30): GalleryShot[] {
   if (!assets.length) throw new Error('Select at least one property photo');

@@ -16,10 +16,10 @@ import type { PropJobInput } from "./property-presentation";
 import { type RequestHandle } from "./property-models";
 
 export const PRESENTER_MODEL = {
-  id: "higgsfield-ai/soul/v2/image-to-image",
-  endpoint: "higgsfield-ai/soul/v2/image-to-image",
-  url: "https://api.higgsfield.ai/higgsfield-ai/soul/v2/image-to-image",
-  docs: "https://open.higgsfield.ai/models/higgsfield-ai/soul/v2/image-to-image/api-reference",
+  id: "higgsfield-ai/soul/v2/standard",
+  endpoint: "higgsfield-ai/soul/v2/standard",
+  url: "https://api.higgsfield.ai/higgsfield-ai/soul/v2/standard",
+  docs: "https://open.higgsfield.ai/models/higgsfield-ai/soul/v2/standard/api-reference",
 } as const;
 
 /** Visible disclosure rendered on presenter-mode videos. Never removed. */
@@ -33,10 +33,13 @@ export function presenterDisclosure(language: "fr" | "ar" | "en"): string {
 export function presenterReferencePrompt(language: string = "fr"): string {
   void language; // prompt is language-independent; identity kept consistent
   return [
-    "Photorealistic male Moroccan presenter, waist-up portrait, navy blazer over a white shirt,",
-    "short dark hair, groomed short beard, warm confident expression, professional real-estate host,",
-    "standing, facing camera, even studio lighting, natural skin texture, neutral warm interior background.",
-    "Sharp focus, editorial photography quality, 4k. No text, no logos, no watermarks. Single person.",
+    "A photorealistic portrait of a professional Moroccan real estate agent, approximately 35-45 years old.",
+    "Waist-up, smart business casual: navy blue blazer, crisp white shirt, open collar, no tie.",
+    "Short dark hair, well-groomed, warm confident smile, direct eye contact with camera.",
+    "Natural skin texture with subtle imperfections, professional lighting with soft key light.",
+    "Clean neutral warm-grey studio background, no harsh shadows, high-end corporate headshot style.",
+    "Approachable, trustworthy, knowledgeable expression - like a top real estate professional.",
+    "Sharp focus on face and eyes, 85mm lens portrait aesthetic, high detail, 8K quality.",
   ].join(" ");
 }
 
@@ -58,8 +61,13 @@ export function scenePrepPrompt(input: PropJobInput): string {
 
 /** Payload for the soul/v2 image-to-image request. imageUrl must be public HTTPS. */
 export function presenterSceneRequest(imageUrl: string, prompt: string) {
-  if (!/^https:\/\//.test(imageUrl)) throw new Error("Scene reference image must be a public https URL");
+  if (!/^https:\/\/[^/]/.test(imageUrl)) throw new Error("Scene reference image must be a public https URL");
   return { image_url: imageUrl, prompt, strength: 0.45, quality: "high" };
+}
+
+/** Payload for the soul/v2 text-to-image reference portrait. */
+export function presenterReferenceRequest(prompt: string) {
+  return { prompt, aspect_ratio: "9:16", resolution: "1080p", batch_size: 1, enhance_prompt: true };
 }
 
 export type ComposeMode = "panel" | "presenter";
@@ -74,19 +82,21 @@ export function validatePresenterMode(value: unknown): ComposeMode {
  * Every presenter scene is used; property shots fill the gaps. With no scenes
  * the property photos are returned unchanged (panel mode stays untouched).
  */
-export function planPresenterShots(photos: string[], scenes: string[]): GalleryAsset[] {
+export function planPresenterShots(photos: string[], avatarUrls: string[]): GalleryAsset[] {
   const assets: GalleryAsset[] = [];
-  if (!scenes.length) return photos.map(photo => ({ photo }));
-  const total = photos.length + scenes.length;
-  let p = 0, s = 0;
+  if (!avatarUrls.length) return photos.map(photo => ({ photo }));
+  const total = photos.length + avatarUrls.length;
+  let p = 0, a = 0;
+  const positions: ('left' | 'right' | 'center')[] = ['left', 'right', 'center'];
   for (let i = 0; i < total; i++) {
-    // Presenter scene every other slot, starting at slot 1 (opening shot stays real).
-    if (s < scenes.length && i % 2 === 1) {
-      assets.push({ photo: scenes[s++], presenter: true });
+    if (a < avatarUrls.length && i % 2 === 1) {
+      assets.push({ photo: photos[p], presenter: true, avatar: avatarUrls[a], presenterPos: positions[a % positions.length] });
+      a++; p++;
     } else if (p < photos.length) {
       assets.push({ photo: photos[p++] });
-    } else {
-      assets.push({ photo: scenes[s++], presenter: true });
+    } else if (a < avatarUrls.length) {
+      assets.push({ photo: photos[p], presenter: true, avatar: avatarUrls[a], presenterPos: positions[a % positions.length] });
+      a++; p++;
     }
   }
   return assets;
@@ -106,7 +116,8 @@ export async function generateSoulImage(opts: {
 }): Promise<{ requestId: string; imageUrl: string }> {
   const API = "https://api.higgsfield.ai";
   const doFetch = opts.fetchImpl || fetch;
-  const headers = { Authorization: `*** ${opts.keyId}:${opts.keySecret}`, "Content-Type": "application/json" };
+  const auth = `Key ${opts.keyId}:${opts.keySecret}`;
+  const headers = { Authorization: auth, "Content-Type": "application/json" };
   let handle = opts.resume;
   if (!handle) {
     // A failed/ambiguous POST is never auto-retried: it could create a duplicate paid job.

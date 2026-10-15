@@ -108,7 +108,7 @@ function validateDraft(body: any) {
     motionModel: validateMotion(body.motionModel),
     sourceUrl: str(body.sourceUrl, 500) || "",
     language,
-    voiceId: str(body.voiceId, 64) || (process.env.ELEVEN_VOICE_ID || "JBFqnCBsd6RMkjVDRZzb"),
+    voiceId: str(body.voiceId, 64) || (process.env.ELEVEN_VOICE_ID || "cjVigY5qzO86Huf0OWal"),
     narration,
     listing: {
       title: str(listing.title, 300),

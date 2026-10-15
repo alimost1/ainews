@@ -146,7 +146,7 @@ Config.setCodec("h264");
 Config.setCrf(18);
 Config.setPixelFormat("yuv420p");
 // OffthreadVideo decode of full-frame clips on small hosts can exceed the 30s default
-Config.setDelayRenderTimeoutInMilliseconds(120000);
+Config.setDelayRenderTimeoutInMilliseconds(300000);
 // Parallel page contexts exhaust small-host memory with embedded clips
 Config.setConcurrency(2);
 ${vendorChrome ? `// Vendored chrome-headless-shell (Remotion's downloaded build may segfault on this host)\nConfig.setBrowserExecutable(${JSON.stringify(vendorChrome)});` : ""}
