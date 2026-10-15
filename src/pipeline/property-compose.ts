@@ -10,11 +10,13 @@ import * as fs from "fs";
 import * as path from "path";
 import { execFileSync } from "child_process";
 import { planGallery, frameTimeline, type GalleryAsset } from "./property-cinematic";
+import { presenterDisclosure } from "./property-presenter";
 import type { PropJobInput } from "./property-presentation";
 
 export interface SegmentPlan {
   text: string;
   audioFile: string; // staticFile path e.g. audio/seg_01.mp3
+  presenterAlpha?: string; // keyed transparent WebM, aligned to this narration segment
   avatarClip: string; // staticFile path e.g. avatar/seg_01.mp4
   durationSec: number; // ffprobe-measured audio duration
   photoFile?: string; // staticFile path e.g. photos/photo_01.jpg (tour scenes)
@@ -41,15 +43,17 @@ export function planCaptions(input: PropJobInput, lang: string): { opening: stri
   };
 }
 
-/** Emit the per-job Remotion project (index.tsx + props). */
+/** Emit the per-job Remotion project (index.tsx + props). mode stays 'panel' unless the job is presenter mode. */
 export function generateRemotionProject(opts: {
   jobDir: string;
   plan: SegmentPlan[];
   input: PropJobInput;
   fps: number;
   gallery?: GalleryAsset[];
+  mode?: "panel" | "presenter";
 }): { entryDir: string } {
   const { jobDir, plan, input, fps } = opts;
+  const mode = opts.mode === "presenter" ? "presenter" : "panel";
   const entryDir = path.join(jobDir, "render");
   const pub = path.join(entryDir, "public");
   for (const d of [entryDir, pub, path.join(pub, "avatar"), path.join(pub, "photos"), path.join(pub, "audio")]) {
@@ -74,14 +78,21 @@ export function generateRemotionProject(opts: {
     }
     if (fs.existsSync(dst)) a.blur = rel;
   }
+  const editStyle = input.editStyle || "ad";
+  const shots = planGallery(assets, totalFrames, fps, editStyle);
+  if (mode === "presenter" && plan.some(s => !s.presenterAlpha)) {
+    throw new Error("Transparent presenter missing for a narration segment — complete scenePrep first");
+  }
   const data = {
     fps, totalFrames, language: input.language, rtl: input.language === "ar", title: input.listing.title,
     location: input.listing.location, reference: input.listing.reference,
     price: input.listing.price == null ? "" : `${input.listing.price.toLocaleString(input.language === "ar" ? "ar-MA" : "fr-FR")} ${input.listing.priceCurrency || ""}`,
     agency: input.branding.agencyName, contact: input.branding.contactLine,
-    highlights: caps.highlights, closing: caps.closing, aiMotion: assets.some(a => !!a.video),
-    segments: plan.map((s, i) => ({ ...timeline[i], audio: s.audioFile, avatar: s.avatarClip })),
-    shots: planGallery(assets, totalFrames, fps),
+    highlights: caps.highlights, closing: caps.closing, aiMotion: assets.some(a => !!a.video && !a.presenter),
+    mode, editStyle,
+    disclosure: mode === "presenter" ? presenterDisclosure(input.language) : "",
+    segments: plan.map((s, i) => ({ ...timeline[i], audio: s.audioFile, avatar: s.avatarClip, presenterAlpha: s.presenterAlpha })),
+    shots,
   };
   fs.writeFileSync(path.join(entryDir, "segments.json"), JSON.stringify(data, null, 2));
   fs.writeFileSync(path.join(entryDir, "index.tsx"), `import React from 'react';
@@ -131,7 +142,7 @@ Config.setCodec("h264");
 Config.setCrf(18);
 Config.setPixelFormat("yuv420p");
 // OffthreadVideo decode of full-frame clips on small hosts can exceed the 30s default
-Config.setDelayRenderTimeoutInMilliseconds(120000);
+Config.setDelayRenderTimeoutInMilliseconds(300000);
 // Parallel page contexts exhaust small-host memory with embedded clips
 Config.setConcurrency(2);
 ${vendorChrome ? `// Vendored chrome-headless-shell (Remotion's downloaded build may segfault on this host)\nConfig.setBrowserExecutable(${JSON.stringify(vendorChrome)});` : ""}

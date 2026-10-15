@@ -211,7 +211,7 @@ npm run start:server
    edited freely. The source agency is kept as the branding default — never
    replaced. Built area is never inferred from land area.
 3. **Generate** — with explicit confirmation showing the provider, model,
-   voice, target duration, and a cost estimate.
+   voice, estimated narration duration, and billable motion seconds. Provider prices depend on the model and account.
 4. **Preview and download** the MP4; history lists every job with per-stage status.
 
 ### Video structure (fr default, ar + en supported)
@@ -223,7 +223,7 @@ never composited into the property, and photos are used as-is (watermarks intact
 ### Lip-sync capability (verified)
 The avatar stage uses **Higgsfield `wan/v2.7/image-to-video`** with
 `image_url` + `audio_url` + prompt + duration (2–15 s per segment) +
-`resolution: 720p` + `aspect_ratio: 9:16` — the audio-driven image-to-video
+`resolution: 1080p` — the audio-driven image-to-video
 endpoint documented at docs.higgsfield.ai. Narration is split into ≤14 s
 segments; each segment is lipsynced separately with the real provider
 `request_id` polled to completion, then all segments are assembled
@@ -244,9 +244,97 @@ substitution and no invented models.
 | GET | `/api/property/jobs` | History with stage statuses |
 | GET | `/api/property/jobs/:id/video` | Download the MP4 (path-restricted) |
 | POST | `/api/property/upload-avatar` | Upload presenter portrait (PNG/JPG ≤ 2 MB) |
-| GET | `/api/property/config` | Verified capabilities + cost estimate |
+| GET | `/api/property/config` | Verified capabilities + pricing guidance |
 
 Each job gets its own workspace `data/prop-jobs/<id>/` (listing, narration
 audio, avatar clips, generated Remotion project, MP4). Jobs persist across
 restarts; completed assets are reused on retry. API keys never leave the
 backend. Nothing is published automatically.
+
+
+### Cinematic property videos
+
+The property flow builds on Hermes's `feature/property-avatar-presentation` branch.
+At `/property`, paste the listing URL, review facts and narration, select photos in
+presentation order, upload a presenter portrait, and choose photo motion:
+
+| Mode | Implementation | Additional generated property clips |
+|---|---|---|
+| Dynamic photos (default) | Original photos, alternating pan/zoom, 0.4s crossfades | None |
+| Kling 3.0 Pro | `kling-video/v3.0/pro/image-to-video`, sound off | 5s per selected photo |
+| Wan 3.0 | `alibaba/wan-3.0/image-to-video`, 1080p, sound off | 5s per selected photo |
+
+The edit changes photos around every four seconds, independently of narration
+segments, and uses every selected photo. It includes animated opening typography,
+reviewed highlights, price, source agency, contact ending, a progress line, and a
+presenter panel that leaves most of the image visible. Photos fit without stretching
+against a blurred backdrop. Spoken audio remains continuous while pictures crossfade.
+
+The avatar stays on the documented audio-driven Wan 2.7 endpoint at 1080p; motion
+models are not treated as interchangeable lip-sync providers. Official schemas:
+- https://open.higgsfield.ai/models/kling-video/v3.0/pro/image-to-video/api-reference
+- https://open.higgsfield.ai/models/alibaba/wan-3.0/image-to-video/api-reference
+- https://open.higgsfield.ai/models/wan/v2.7/image-to-video/api-reference
+
+Schemas were checked on 2026-10-14. Model access and prices depend on your account.
+AI prompts request conservative camera movement and unchanged architecture, but
+model output can still alter details: inspect generated clips before using them
+in an advertisement. Choose dynamic photos when exact source imagery matters.
+The paid generation confirmation shows the selected model, photo count and
+billable motion seconds; no unsupported fixed price is quoted.
+
+Set `PUBLIC_BASE_URL` to this server's externally reachable HTTPS base URL so
+Higgsfield can fetch the portrait, narration, and selected gallery photos. Set
+`HF_API_KEY_ID`, `HF_API_KEY_SECRET`, and `ELEVENLABS_API_KEY` server-side.
+The server now resolves its project directory from its own location; optionally
+set `IANEWS_PROJECT_ROOT` if media lives elsewhere.
+
+```sh
+npm ci
+npm run build:dashboard
+npm run start:server
+```
+
+Open `/property` on that server. New provider request handles are saved before
+polling, so a retry reuses an in-flight request instead of billing a new POST.
+Provider-terminal failures require a new job. Do not retry an ambiguous failed
+submission until provider billing confirms whether it was accepted.
+
+Validation: `npm run typecheck`, `npm run build:dashboard`, and `npm test`.
+Automated tests use mocked providers and do not spend API credits.
+
+
+### Fast ads with a transparent presenter (PR #5 follow-up)
+
+Select **Présentateur détouré transparent** and **Publicité dynamique** at `/property`.
+New presenter jobs create one uniform green-screen reference, generate one speaking
+clip per narration segment using that exact audio, and key the moving clips to
+VP9 WebM with alpha locally. Remotion decodes them with `OffthreadVideo transparent`.
+The presenter has no rectangular background or border. Property images remain
+separate and can change every two seconds without restarting the speaker.
+The ad layout fills the portrait canvas (landscape photos are cropped); choose
+**Visite calme** for the slower contained-photo layout. Inspect framing before use.
+
+The clip for narration segment N starts at the same frame as audio N. It is never
+looped, sped up or restarted on a property cut. Duration checks catch truncated
+clips. This fixes edit-induced lip-sync drift; model-generated mouth accuracy still
+requires human review of a real generation. No automatic regeneration is billed.
+
+Background removal requires a clean green source. The generated portrait and
+video prompts specify uniform RGB 0,255,0, navy/white clothing and unobstructed
+mouth/hands. Alpha is checked at the start, middle and end. Failed removal stops
+the job visibly instead of copying a still or hiding the presenter. It does not
+claim to remove arbitrary uploaded backgrounds. Uploaded portraits remain available
+in the optional panel mode, which now renders correctly again.
+
+Previously created presenter jobs are not silently regenerated with paid models.
+Create a new reviewed job for the transparent workflow; it is versioned separately
+from existing grey-background clips and provider handles. Billing is one generated
+reference plus per-segment speaking video, with no per-photo scene-edit charge.
+
+Start with `npm run build:dashboard` then `npm run start:server` in the repository.
+Use the existing provider credentials and public media base URL. The generated
+reference is now saved at the exact path served to Higgsfield. FFmpeg must include
+`colorkey`, `despill` and `libvpx-vp9`. Tests execute real local FFmpeg matte operations
+and mocked providers; live presenter identity, mouth quality and green-screen
+consistency need deployment validation before an ad is published.

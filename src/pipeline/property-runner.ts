@@ -4,7 +4,11 @@
  * composition + render.
  */
 import * as fs from "fs";
+import { prepareTransparentPresenter } from "./property-matte";
 import { generateHiggsfield, motionRequest, MOTION_MODELS, type RequestHandle } from "./property-models";
+import {
+  generateSoulImage, presenterReferencePrompt, presenterReferenceRequest,
+} from "./property-presenter";
 import { prepareNarrationAudio } from "./property-audio";
 import type { GalleryAsset } from "./property-cinematic";
 import * as path from "path";
@@ -54,6 +58,11 @@ function npx() { return process.platform === "win32" ? "npx.cmd" : "npx"; }
 async function executePropJob(jobId: string): Promise<void> {
   let job = store.get(jobId);
   if (!job || job.status === "canceled") return;
+  const presenterMode = job.mode === "presenter";
+  if (presenterMode && job.presenterVersion !== "greenscreen-v2") {
+    store.update(jobId, {status:"failed",error:"This job uses the older presenter workflow. Create a new reviewed job for transparent presenter generation; existing paid clips were not regenerated."});
+    return;
+  }
   const { keyId, keySecret, elevenKey } = hfKeys();
   // Per-stage configuration gates: stages whose provider is unconfigured fail
   // with an explicit message; stages that CAN run still run (so partial
@@ -105,7 +114,7 @@ async function executePropJob(jobId: string): Promise<void> {
     segments = store.get(jobId)!.segments!;
     const plan: SegmentPlan[] = segments.map((seg, i) => ({
       text: seg.text, audioFile: `audio/seg_${String(i + 1).padStart(2, "0")}.mp3`,
-      avatarClip: `avatar/seg_${String(i + 1).padStart(2, "0")}.mp4`,
+      avatarClip: `avatar/seg_${presenterMode ? "greenscreen_v2_" : ""}${String(i + 1).padStart(2, "0")}.mp4`,
       durationSec: probeDuration(path.join(audioDir, `seg_${String(i + 1).padStart(2, "0")}.mp3`)),
     }));
 
@@ -114,6 +123,7 @@ async function executePropJob(jobId: string): Promise<void> {
     fs.mkdirSync(photoDir, { recursive: true });
     const images = store.get(jobId)!.listing.images;
     const photoFiles: string[] = [];
+    const originalImageUrls: string[] = [];
     for (let i = 0; i < images.length; i++) {
       const dest = path.join(photoDir, `photo_${String(i + 1).padStart(2, "0")}.jpg`);
       if (!(fs.existsSync(dest) && fs.statSync(dest).size > 500)) {
@@ -121,6 +131,7 @@ async function executePropJob(jobId: string): Promise<void> {
         fs.writeFileSync(dest, buf);
       }
       photoFiles.push(`photos/photo_${String(i + 1).padStart(2, "0")}.jpg`);
+      originalImageUrls.push(images[i]);
     }
 
     // ── avatar: presenter image (uploaded) + Higgsfield lipsync per segment ──
@@ -135,38 +146,70 @@ async function executePropJob(jobId: string): Promise<void> {
       const resume: RequestHandle | undefined = fs.existsSync(file) ? JSON.parse(fs.readFileSync(file, "utf8")) : undefined;
       return { resume, onSubmitted: (handle: RequestHandle) => {
         fs.writeFileSync(file, JSON.stringify(handle));
-        const stage: PropStage = name.startsWith("motion") ? "motion" : "avatar";
+        const stage: PropStage = name.startsWith("motion") ? "motion"
+          : name.startsWith("presenter_ref") ? "presenter"
+          : name.startsWith("scene") ? "scenePrep" : "lipsync";
         const ids = store.get(jobId)!.stages[stage].providerRequestIds || [];
         store.updateStage(jobId, stage, { providerRequestIds: [...new Set([...ids, handle.requestId])] });
       } };
     }
-    await stageRun("avatar", async () => {
+
+
+    // ── presenter: synthetic reference portrait (presenter mode only) ──
+    await stageRun("presenter", async () => {
+      if (!presenterMode) { store.updateStage(jobId, "presenter", { status: "skipped" }); return; }
+      requireHf();
+      const publicUrl = new URL(publicBase || "http://localhost");
+      // Allow HTTP for local testing; production should use HTTPS
+      if (publicUrl.protocol !== "https:" && publicUrl.protocol !== "http:" || /^(localhost|127\.|\[::1\])/.test(publicUrl.hostname)) {
+        throw new Error("Set PUBLIC_BASE_URL to a public HTTPS/HTTP address of this server before presenter generation");
+      }
+      const refFile = path.join(dir, "presenter_greenscreen_v2.png");
+      if (!(fs.existsSync(refFile) && fs.statSync(refFile).size > 10_000)) {
+        if (!photoFiles.length) throw new Error("Select at least one property photo");
+        const result = await generateSoulImage({ keyId, keySecret, ...requestState("presenter_ref_greenscreen_v2"),
+          input: presenterReferenceRequest(presenterReferencePrompt()) });
+        const dl = await fetch(result.imageUrl, { signal: AbortSignal.timeout(120000) });
+        if (!dl.ok) throw new Error(`Presenter reference download failed (${dl.status})`);
+        const tmp = refFile + ".tmp";
+        fs.writeFileSync(tmp, Buffer.from(await dl.arrayBuffer()));
+        fs.renameSync(tmp, refFile);
+      }
+    });
+
+    // ── lipsync: Wan 2.7 per segment (uploaded portrait in panel mode,
+    //    synthetic green-screen reference in presenter mode) ──
+    await stageRun("lipsync", async () => {
       requireHf();
       const j = store.get(jobId)!;
-      if (!fs.existsSync(presenterPath)) {
-        // Uploaded portrait was stored server-side at draft time
-        throw new Error("Presenter portrait missing — upload an avatar first");
-      }
       // The public media server exposes /media/prop/<jobId>/... for Higgsfield fetches
       const publicUrl = new URL(publicBase || "http://localhost");
-      if (publicUrl.protocol !== "https:" || /^(localhost|127\.|\[::1\])/.test(publicUrl.hostname)) {
-        throw new Error("Set PUBLIC_BASE_URL to the public HTTPS address of this server before avatar generation");
+      // Allow HTTP for local testing; production should use HTTPS
+      if (publicUrl.protocol !== "https:" && publicUrl.protocol !== "http:" || /^(localhost|127\.|\[::1\])/.test(publicUrl.hostname)) {
+        throw new Error("Set PUBLIC_BASE_URL to a public HTTPS/HTTP address of this server before avatar generation");
       }
-      const presenterUrl = `${publicBase}/media/prop/${jobId}/presenter.png`;
+      if (!presenterMode) {
+        if (!fs.existsSync(presenterPath)) {
+          // Uploaded portrait was stored server-side at draft time
+          throw new Error("Presenter portrait missing — upload an avatar first");
+        }
+      }
+      const panelUrl = `${publicBase}/media/prop/${jobId}/${presenterMode ? "presenter_greenscreen_v2.png" : "presenter.png"}`;
 
       for (let i = 0; i < plan.length; i++) {
         if (store.get(jobId)!.status === "canceled") throw new Error("canceled");
         const segAudioPublic = `${publicBase}/media/prop/${jobId}/audio/seg_${String(i + 1).padStart(2, "0")}.mp3`;
-        const clipLocal = path.join(avatarDir, `seg_${String(i + 1).padStart(2, "0")}.mp4`);
+        const clipLocal = path.join(pub, plan[i].avatarClip);
         if (fs.existsSync(clipLocal) && fs.statSync(clipLocal).size > 10_000) {
-          plan[i].avatarClip = `avatar/seg_${String(i + 1).padStart(2, "0")}.mp4`;
+
           continue; // resume completed clip
         }
+        const sceneUrl = panelUrl;
         const result = await hfAvatarSegment({
-          keyId, keySecret, ...requestState(`avatar_${i}`),
-          imageUrl: presenterUrl,
+          keyId, keySecret, ...requestState(`avatar_${presenterMode ? "greenscreen_v2_" : ""}${i}`),
+          imageUrl: sceneUrl,
           audioUrl: segAudioPublic,
-          prompt: "The presenter introduces the property with restrained professional hand gestures, natural lip sync following the provided audio exactly, steady gaze and consistent appearance. Keep the same face and outfit.",
+          prompt: "The presenter speaks exactly the supplied audio with natural synchronized mouth movement, steady gaze, locked camera and restrained hand gestures. Preserve the same face and outfit. " + (presenterMode ? "Keep the background perfectly flat saturated chroma-key green RGB 0 255 0 throughout. No camera moves, scenery, gradients, shadows or green clothing. Keep hands and shoulders within the frame." : ""),
           durationSec: plan[i].durationSec,
           aspectRatio: "9:16",
         });
@@ -177,9 +220,25 @@ async function executePropJob(jobId: string): Promise<void> {
         fs.writeFileSync(tmp, Buffer.from(await dl.arrayBuffer()));
         if (probeDuration(tmp) + 0.1 < plan[i].durationSec) throw new Error(`Avatar segment ${i + 1} is shorter than narration`);
         fs.renameSync(tmp, clipLocal);
-        plan[i].avatarClip = `avatar/seg_${String(i + 1).padStart(2, "0")}.mp4`;
+
       }
 
+    });
+
+    // Key every complete moving speech clip to alpha; never flatten to a JPEG.
+    const alphaDir = path.join(pub, "presenter");
+    fs.mkdirSync(alphaDir, {recursive:true});
+    await stageRun("scenePrep", async () => {
+      if (!presenterMode) return;
+      for (let i=0; i<plan.length; i++) {
+        if (store.get(jobId)!.status === "canceled") throw new Error("canceled");
+        const alphaFile = path.join(alphaDir, `seg_${String(i+1).padStart(2,"0")}.webm`);
+        if (!fs.existsSync(alphaFile)) await prepareTransparentPresenter(path.join(pub, plan[i].avatarClip), alphaFile, plan[i].durationSec);
+      }
+    });
+    if (presenterMode) plan.forEach((segment,i) => {
+      segment.presenterAlpha = `presenter/seg_${String(i+1).padStart(2,"0")}.webm`;
+      if (!fs.existsSync(path.join(pub,segment.presenterAlpha))) throw new Error("Transparent presenter asset missing; retry scene preparation");
     });
 
     // All selected photos participate independently of the narration segment count.
@@ -211,9 +270,10 @@ async function executePropJob(jobId: string): Promise<void> {
       gallery.forEach((asset, i) => { asset.video = `motion/shot_${i}.mp4`; });
     }
 
-    // ── compose: generate Remotion project ──────────────────────────
+    // ── compose: generate Remotion project (mode: 'panel' default | 'presenter') ──
     await stageRun("compose", async () => {
-      generateRemotionProject({ jobDir: dir, plan, input: j, fps: 30, gallery });
+      const mode = j.mode === "presenter" ? "presenter" : "panel";
+      generateRemotionProject({ jobDir: dir, plan, input: j, fps: 30, gallery, mode });
       const vendorChrome = path.join(ROOT, "vendor", "chrome-headless-shell", "chrome-headless-shell-linux64", "chrome-headless-shell");
       fs.writeFileSync(path.join(renderDir, "remotion.config.ts"),
         makeRemotionConfig(fs.existsSync(vendorChrome) ? vendorChrome : (process.env.REMOTION_BROWSER_EXECUTABLE || null)));
@@ -223,7 +283,7 @@ async function executePropJob(jobId: string): Promise<void> {
     const outPath = path.join(dir, "output.mp4");
     await stageRun("render", async () => {
       const r = await runStage(npx(), ["remotion", "render", "index.tsx", "PropertyPresentation", outPath,
-        "--public-dir", pub], renderDir, 40 * 60 * 1000);
+        "--public-dir", pub], renderDir, 60 * 60 * 1000);
       if (r.code !== 0) throw new Error((r.stderr || r.stdout || "render failed").split("\n").filter(Boolean).slice(-4).join(" | ").slice(0, 500));
       if (!fs.existsSync(outPath) || fs.statSync(outPath).size < 10_000) throw new Error("Rendered MP4 missing or too small");
       const dur = probeDuration(outPath);
