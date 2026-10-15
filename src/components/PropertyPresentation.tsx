@@ -5,8 +5,9 @@ export interface PresentationData {
   fps: number; rtl: boolean; totalFrames: number; language?: string;
   title: string; location: string; reference: string; price: string;
   agency: string; contact: string; highlights: string[]; closing: string; aiMotion: boolean;
+  mode?: 'panel' | 'presenter'; disclosure?: string;
   segments: { from: number; duration: number; audio: string; avatar: string }[];
-  shots: { from: number; duration: number; index: number; photo: string; video?: string; blur?: string }[];
+  shots: { from: number; duration: number; index: number; photo: string; video?: string; blur?: string; presenter?: boolean }[];
 }
 const clamp = { extrapolateLeft: 'clamp', extrapolateRight: 'clamp' } as const;
 const gold = '#E7C58A';
@@ -34,6 +35,7 @@ export const PropertyPresentation: React.FC<PresentationData> = data => {
   const entry = interpolate(frame, [0, 22], [40, 0], clamp);
   const opacity = interpolate(frame, [0, 16], [0, 1], clamp);
   const panelWidth = opening || closing ? 290 : 230;
+  const presenterMode = data.mode === 'presenter';
   return <AbsoluteFill style={{ background: '#101716', color: 'white', fontFamily: "'Noto Sans Arabic','Segoe UI',Tahoma,sans-serif", direction: data.rtl ? 'rtl' : 'ltr' }}>
     {data.shots.map(s => <Sequence key={s.index} from={s.from} durationInFrames={s.duration}><Photo shot={s} fps={data.fps} /></Sequence>)}
     <AbsoluteFill style={{ background: 'linear-gradient(180deg,rgba(6,18,17,.85),transparent 30%,transparent 52%,rgba(6,18,17,.96))' }} />
@@ -47,11 +49,13 @@ export const PropertyPresentation: React.FC<PresentationData> = data => {
     </div>
     {data.segments.map((s, i) => <Sequence key={i} from={s.from} durationInFrames={s.duration}>
       <Audio src={staticFile(s.audio)} />
-      <div style={{ position: 'absolute', right: data.rtl ? undefined : 48, left: data.rtl ? 48 : undefined, bottom: 460,
-        width: panelWidth, height: panelWidth * 1.3, borderRadius: 22, overflow: 'hidden', border: '2px solid rgba(231,197,138,.7)', boxShadow: '0 16px 46px #0008' }}>
-        <Video src={staticFile(s.avatar)} muted style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
-      </div>
+      {!presenterMode &&
+        <div style={{ position: 'absolute', right: data.rtl ? undefined : 48, left: data.rtl ? 48 : undefined, bottom: 460,
+          width: panelWidth, height: panelWidth * 1.3, borderRadius: 22, overflow: 'hidden', border: '2px solid rgba(231,197,138,.7)', boxShadow: '0 16px 46px #0008' }}>
+          <Video src={staticFile(s.avatar)} muted style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+        </div>}
     </Sequence>)}
+    {presenterMode && <div style={{ position: 'absolute', top: 40, left: 64, fontSize: 20, color: '#d8e0dd', background: 'rgba(6,18,17,.6)', padding: '6px 14px', borderRadius: 8 }}>{data.disclosure}</div>}
     <div style={{ position: 'absolute', left: 64, right: 64, bottom: 180 }}>
       <div style={{ height: 3, width: 74, background: gold, marginBottom: 24 }} />
       <div key={closing ? 'closing' : factIndex} style={{ fontSize: closing ? 39 : 48, lineHeight: 1.25, fontWeight: 600, maxWidth: 910 }}>

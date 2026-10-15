@@ -29,7 +29,7 @@ try {
 }
 
 const PORT = 8090;
-const PROJECT = '/root/ianews';
+const PROJECT = process.env.IANEWS_PROJECT_ROOT || __dirname;
 
 // ─── Config ──────────────────────────────────────────────────────────
 // Load secrets from .env file (never hardcode in source)
@@ -557,7 +557,7 @@ const server = http.createServer(async (req, res) => {
   }
   // Per-job media for Higgsfield fetches (avatar portraits + narration audio):
   // /media/prop/<jobId>/<sub...> restricted to data/prop-jobs/<jobId>/...
-  const propMediaMatch = pathname.match(/^\/media\/prop\/([a-zA-Z0-9-]+)\/(avatar|audio)\/([a-zA-Z0-9_.-]+\.(mp3|mp4|png|jpg))$/);
+  const propMediaMatch = pathname.match(/^\/media\/prop\/([a-zA-Z0-9-]+)\/(avatar|audio|photos|scenes)\/([a-zA-Z0-9_.-]+\.(mp3|mp4|png|jpg))$/);
   if (propMediaMatch && req.method === 'GET') {
     const jobId = propMediaMatch[1];
     const sub = propMediaMatch[2];

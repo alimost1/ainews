@@ -37,6 +37,7 @@ export interface PropJobRecord {
   branding: PropJobInput["branding"];
   avatarProvided: boolean;
   motionModel?: import("./property-models").PropertyMotion;
+  mode?: import("./property-presenter").ComposeMode;
   stages: Record<PropStage, PropStageRecord>;
   segments?: { text: string; audioSec?: number }[];
   actualDurationSec?: number;
@@ -49,7 +50,14 @@ function readIndex(): Record<string, PropJobRecord> {
   try {
     const jobs = JSON.parse(fs.readFileSync(INDEX_PATH, "utf-8"));
     for (const job of Object.values(jobs) as PropJobRecord[]) {
-      job.stages.motion ||= { status: "pending", attempts: 0 };
+      // Stage-list migrations (never clobber completed/failed work):
+      if ((job.stages as any).avatar && !job.stages.lipsync) {
+        job.stages.lipsync = (job.stages as any).avatar; // old name of the Wan lip-sync stage
+        delete (job.stages as any).avatar;
+      }
+      for (const s of ["motion", "presenter", "scenePrep", "lipsync"] as PropStage[]) {
+        job.stages[s] ||= { status: "pending", attempts: 0 };
+      }
     }
     return jobs;
   } catch { return {}; }

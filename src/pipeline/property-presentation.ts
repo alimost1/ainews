@@ -24,8 +24,8 @@ import { execFileSync } from "child_process";
 export const HF_API = "https://api.higgsfield.ai";
 export const ELEVEN_TTS_URL = "https://api.elevenlabs.io/v1/text-to-speech";
 
-export type PropStage = "extract" | "script" | "voice" | "avatar" | "motion" | "compose" | "render";
-export const PROP_STAGES: PropStage[] = ["extract", "script", "voice", "avatar", "motion", "compose", "render"];
+export type PropStage = "extract" | "script" | "voice" | "presenter" | "scenePrep" | "motion" | "lipsync" | "compose" | "render";
+export const PROP_STAGES: PropStage[] = ["extract", "script", "voice", "presenter", "scenePrep", "motion", "lipsync", "compose", "render"];
 
 export interface PropJobInput {
   sourceUrl: string;
@@ -53,6 +53,7 @@ export interface PropJobInput {
     contactLine: string;
   };
   motionModel?: import("./property-models").PropertyMotion;
+  mode?: import("./property-presenter").ComposeMode; // default 'panel'
   clientToken?: string;
 }
 

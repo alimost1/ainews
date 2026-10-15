@@ -10,6 +10,7 @@ import * as fs from "fs";
 import * as path from "path";
 import { execFileSync } from "child_process";
 import { planGallery, frameTimeline, type GalleryAsset } from "./property-cinematic";
+import { presenterDisclosure } from "./property-presenter";
 import type { PropJobInput } from "./property-presentation";
 
 export interface SegmentPlan {
@@ -41,15 +42,17 @@ export function planCaptions(input: PropJobInput, lang: string): { opening: stri
   };
 }
 
-/** Emit the per-job Remotion project (index.tsx + props). */
+/** Emit the per-job Remotion project (index.tsx + props). mode stays 'panel' unless the job is presenter mode. */
 export function generateRemotionProject(opts: {
   jobDir: string;
   plan: SegmentPlan[];
   input: PropJobInput;
   fps: number;
   gallery?: GalleryAsset[];
+  mode?: "panel" | "presenter";
 }): { entryDir: string } {
   const { jobDir, plan, input, fps } = opts;
+  const mode = opts.mode === "presenter" ? "presenter" : "panel";
   const entryDir = path.join(jobDir, "render");
   const pub = path.join(entryDir, "public");
   for (const d of [entryDir, pub, path.join(pub, "avatar"), path.join(pub, "photos"), path.join(pub, "audio")]) {
@@ -74,14 +77,26 @@ export function generateRemotionProject(opts: {
     }
     if (fs.existsSync(dst)) a.blur = rel;
   }
+  const shots = planGallery(assets, totalFrames, fps);
+  // Presenter scenes carry the lip-synced clip of the narration segment that
+  // overlaps their first frame (the presenter is speaking during that shot).
+  if (mode === "presenter") {
+    for (const shot of shots) {
+      if (!shot.presenter) continue;
+      const segIdx = timeline.findIndex(s => shot.from >= s.from && shot.from < s.from + s.duration);
+      if (segIdx >= 0 && plan[segIdx]?.avatarClip) shot.video = plan[segIdx].avatarClip;
+    }
+  }
   const data = {
     fps, totalFrames, language: input.language, rtl: input.language === "ar", title: input.listing.title,
     location: input.listing.location, reference: input.listing.reference,
     price: input.listing.price == null ? "" : `${input.listing.price.toLocaleString(input.language === "ar" ? "ar-MA" : "fr-FR")} ${input.listing.priceCurrency || ""}`,
     agency: input.branding.agencyName, contact: input.branding.contactLine,
-    highlights: caps.highlights, closing: caps.closing, aiMotion: assets.some(a => !!a.video),
+    highlights: caps.highlights, closing: caps.closing, aiMotion: assets.some(a => !!a.video && !a.presenter),
+    mode,
+    disclosure: mode === "presenter" ? presenterDisclosure(input.language) : "",
     segments: plan.map((s, i) => ({ ...timeline[i], audio: s.audioFile, avatar: s.avatarClip })),
-    shots: planGallery(assets, totalFrames, fps),
+    shots,
   };
   fs.writeFileSync(path.join(entryDir, "segments.json"), JSON.stringify(data, null, 2));
   fs.writeFileSync(path.join(entryDir, "index.tsx"), `import React from 'react';
