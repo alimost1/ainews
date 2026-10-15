@@ -116,10 +116,13 @@
     <h3 style="font-size:.95rem;margin-top:16px">Présentateur</h3>
     <label for="f-mode">Mode de présentation</label>
     <select id="f-mode">
-      <option value="panel">Panneau présentateur (défaut · portrait uploadé · pas d'édition des photos)</option>
-      <option value="presenter">Présentateur IA intégré aux photos (génération d'images facturée par image)</option>
+      <option value="panel">Panneau présentateur (portrait uploadé · pas d'édition des photos)</option>
+      <option value="presenter" selected>Présentateur détouré transparent dans la vidéo</option>
     </select>
-    <p class="warn-note">Le mode « présentateur IA » génère 1 portrait de référence + 1 image par photo sélectionnée (Higgsfield soul/v2 image-to-image), puis synchronise les lèvres sur ces scènes. Une mention « Présentateur généré par IA » est affichée. Le mode panneau conserve les photos d'origine et nécessite un portrait uploadé.</p>
+    <p class="warn-note">Le présentateur est généré sur fond vert, synchronisé avec la narration, puis détouré en vidéo transparente. Un seul portrait est généré ; les photos du bien restent intactes. Le panneau nécessite un portrait uploadé.</p>
+    <label for="f-edit">Rythme du montage</label>
+    <select id="f-edit"><option value="ad">Publicité dynamique · plans de 2 secondes</option><option value="tour">Visite calme · plans de 4 secondes</option></select>
+    <p class="warn-note">Pour une publicité courte, visez 15–30 secondes de narration. Le montage ne coupe pas votre texte.</p>
     <h3 style="font-size:.95rem;margin-top:16px">Avatar présentateur (mode panneau)</h3>
     <div class="row" style="align-items:center">
       <div><label>Uploader un portrait (PNG/JPG, max 2 Mo)</label><input type="file" id="avatar-file" accept="image/png,image/jpeg"></div>
@@ -262,7 +265,7 @@ $("generate-btn").addEventListener("click", async () => {
     if (!selectedPhotos.length) throw new Error("Sélectionnez les photos à présenter.");
     const body = {
       clientToken, sourceUrl: $("f-source").value,
-      mode,
+      mode, editStyle: $("f-edit").value,
       motionModel: $("f-motion").value,
       language: lang(), voiceId: $("f-voice").value.trim(),
       narration: $("f-narr").value.trim(),
@@ -283,11 +286,11 @@ $("generate-btn").addEventListener("click", async () => {
     const cfg = await api("/api/property/config");
     const seconds = Math.ceil(body.narration.split(/\s+/).length / 2.6);
     const motionLabel = body.motionModel === "photo" ? "Montage photo (sans génération vidéo des pièces)" : cfg.motion.models[body.motionModel].label;
-    const presenterLabel = body.mode === "presenter" ? "\nPrésentateur IA : " + cfg.costEstimate.presenterMode.exampleImageTotal + " images pour " + cfg.costEstimate.presenterMode.examplePhotos + " photos (1 référence + 1 par photo)" : "";
+    const presenterLabel = body.mode === "presenter" ? "\nPrésentateur transparent : 1 portrait de référence + clips lip-sync de la narration ; détourage local" : "";
     if (!confirm("Confirmez la génération payante ?\n\nMode : " + (body.mode === "presenter" ? "Présentateur IA dans les photos" : "Panneau présentateur") +
       "\nAvatar : " + cfg.lipSync.model + " · 1080p" +
       "\nVoix : " + (body.voiceId || cfg.tts.defaultVoiceId) +
-      "\nNarration estimée : " + seconds + " s (durée finale mesurée)" +
+      "\nMontage : " + (body.editStyle === "ad" ? "publicité · plans de 2 s" : "visite · plans de 4 s") + "\nNarration estimée : " + seconds + " s (durée finale mesurée)" +
       "\nPhotos : " + selectedPhotos.length + " · " + motionLabel + presenterLabel +
       (body.motionModel === "photo" ? "" : "\nClips IA : " + selectedPhotos.length + " × 5 s = " + selectedPhotos.length * 5 + " secondes facturables") +
       "\nLe tarif dépend du compte et du modèle. Consultez la facturation Higgsfield et ElevenLabs avant de confirmer.")) {

@@ -40,9 +40,9 @@ function mockFetchSequence(steps: Array<{ status?: number; body: any }>) {
 
 // ── Prompt builders & config ─────────────────────────────────────────
 
-test('PRESENTER_MODEL pins the verified soul/v2 image-to-image endpoint', () => {
-  assert.equal(presenter.PRESENTER_MODEL.id, 'higgsfield-ai/soul/v2/image-to-image');
-  assert.equal(presenter.PRESENTER_MODEL.url, 'https://api.higgsfield.ai/higgsfield-ai/soul/v2/image-to-image');
+test('PRESENTER_MODEL uses the verified Soul 2 text-to-image endpoint', () => {
+  assert.equal(presenter.PRESENTER_MODEL.id, 'higgsfield-ai/soul/v2/standard');
+  assert.equal(presenter.PRESENTER_MODEL.url, 'https://api.higgsfield.ai/higgsfield-ai/soul/v2/standard');
 });
 
 test('presenterReferencePrompt specifies a synthetic male Moroccan presenter, waist-up, navy blazer', () => {
@@ -77,14 +77,10 @@ test('validatePresenterMode defaults to panel and rejects unknown modes', () => 
 
 // ── Alternating edit plan ────────────────────────────────────────────
 
-test('planPresenterShots alternates presenter scenes with property-only shots and uses every scene', () => {
-  const photos = ['photos/p1.jpg', 'photos/p2.jpg', 'photos/p3.jpg'];
-  const scenes = ['scenes/s1.png', 'scenes/s2.png'];
-  const plan = presenter.planPresenterShots(photos, scenes);
-  assert.equal(plan.length, 5);
-  assert.deepEqual(plan.map((a: any) => a.photo),
-    ['photos/p1.jpg', 'scenes/s1.png', 'photos/p2.jpg', 'scenes/s2.png', 'photos/p3.jpg']);
-  assert.deepEqual(plan.map((a: any) => !!a.presenter), [false, true, false, true, false]);
+test('property gallery never carries speaking clips or undefined photos', () => {
+  const photos = ['photos/p1.jpg', 'photos/p2.jpg'];
+  const plan = presenter.planPresenterShots(photos, ['a.mp4', 'b.mp4', 'c.mp4']);
+  assert.deepEqual(plan, photos.map(photo => ({photo})));
 });
 
 // ── Resumable, never-duplicate image generation (mocked provider) ────
@@ -142,12 +138,12 @@ test('generateSoulImage rejects terminal provider failures and non-HTTPS results
 
 function makePlan() {
   return [
-    { text: 'seg1', audioFile: 'audio/seg_01.mp3', avatarClip: 'avatar/seg_01.mp4', durationSec: 12.5 },
-    { text: 'seg2', audioFile: 'audio/seg_02.mp3', avatarClip: 'avatar/seg_02.mp4', durationSec: 11.2 },
+    { text: 'seg1', audioFile: 'audio/seg_01.mp3', avatarClip: 'avatar/seg_01.mp4', presenterAlpha: 'presenter/seg_01.webm', durationSec: 12.5 },
+    { text: 'seg2', audioFile: 'audio/seg_02.mp3', avatarClip: 'avatar/seg_02.mp4', presenterAlpha: 'presenter/seg_02.webm', durationSec: 11.2 },
   ];
 }
 
-test('generateRemotionProject in presenter mode alternates scenes, adds disclosure, keeps segment clips on presenter shots', () => {
+test('presenter composition keeps alpha clips on the narration clock and discloses AI', () => {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'ianews-presenter-'));
   const gallery = presenter.planPresenterShots(['photos/p1.jpg', 'photos/p2.jpg'], ['scenes/s1.png']);
   const { entryDir } = compose.generateRemotionProject({
@@ -156,13 +152,10 @@ test('generateRemotionProject in presenter mode alternates scenes, adds disclosu
   const data = JSON.parse(fs.readFileSync(path.join(entryDir, 'segments.json'), 'utf-8'));
   assert.equal(data.mode, 'presenter');
   assert.match(data.disclosure, /généré par IA/i);
-  const presenterShots = data.shots.filter((s: any) => s.presenter);
-  assert.ok(presenterShots.length >= 1, 'at least one presenter shot');
-  for (const s of presenterShots) assert.match(s.video, /^avatar\/seg_\d+\.mp4$/);
-  // alternation: a presenter shot never directly follows another presenter shot
-  for (let i = 1; i < data.shots.length; i++) {
-    assert.ok(!(data.shots[i].presenter && data.shots[i - 1].presenter), 'presenter shots alternate with property shots');
-  }
+  assert.equal(data.segments.length, 2);
+  assert.deepEqual(data.segments.map((s: any) => s.presenterAlpha), ['presenter/seg_01.webm','presenter/seg_02.webm']);
+  assert.equal(data.segments[1].from, data.segments[0].duration);
+  assert.ok(data.shots.every((s:any) => !s.presenter && !s.avatar && !s.video));
   fs.rmSync(tmp, { recursive: true, force: true });
 });
 
@@ -182,8 +175,8 @@ test('generateRemotionProject defaults to panel mode with no disclosure and no p
 
 // ── Stage list wiring ────────────────────────────────────────────────
 
-test('PROP_STAGES includes presenter, scenePrep, motion and lipsync in pipeline order', () => {
+test('PROP_STAGES reflects lip-sync then local matte preparation', () => {
   const stages = pipeline.PROP_STAGES;
-  const order = ['extract', 'script', 'voice', 'presenter', 'scenePrep', 'motion', 'lipsync', 'compose', 'render'];
+  const order = ['extract', 'script', 'voice', 'presenter', 'lipsync', 'scenePrep', 'motion', 'compose', 'render'];
   assert.deepEqual(stages, order);
 });

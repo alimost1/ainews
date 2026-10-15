@@ -16,6 +16,7 @@ import type { PropJobInput } from "./property-presentation";
 export interface SegmentPlan {
   text: string;
   audioFile: string; // staticFile path e.g. audio/seg_01.mp3
+  presenterAlpha?: string; // keyed transparent WebM, aligned to this narration segment
   avatarClip: string; // staticFile path e.g. avatar/seg_01.mp4
   durationSec: number; // ffprobe-measured audio duration
   photoFile?: string; // staticFile path e.g. photos/photo_01.jpg (tour scenes)
@@ -77,15 +78,10 @@ export function generateRemotionProject(opts: {
     }
     if (fs.existsSync(dst)) a.blur = rel;
   }
-  const shots = planGallery(assets, totalFrames, fps);
-  // Presenter scenes carry the lip-synced clip of the narration segment that
-  // overlaps their first frame (the presenter is speaking during that shot).
-  if (mode === "presenter") {
-    for (const shot of shots) {
-      if (!shot.presenter) continue;
-      const segIdx = timeline.findIndex(s => shot.from >= s.from && shot.from < s.from + s.duration);
-      if (segIdx >= 0 && plan[segIdx]?.avatarClip) shot.video = plan[segIdx].avatarClip;
-    }
+  const editStyle = input.editStyle || "ad";
+  const shots = planGallery(assets, totalFrames, fps, editStyle);
+  if (mode === "presenter" && plan.some(s => !s.presenterAlpha)) {
+    throw new Error("Transparent presenter missing for a narration segment — complete scenePrep first");
   }
   const data = {
     fps, totalFrames, language: input.language, rtl: input.language === "ar", title: input.listing.title,
@@ -93,9 +89,9 @@ export function generateRemotionProject(opts: {
     price: input.listing.price == null ? "" : `${input.listing.price.toLocaleString(input.language === "ar" ? "ar-MA" : "fr-FR")} ${input.listing.priceCurrency || ""}`,
     agency: input.branding.agencyName, contact: input.branding.contactLine,
     highlights: caps.highlights, closing: caps.closing, aiMotion: assets.some(a => !!a.video && !a.presenter),
-    mode,
+    mode, editStyle,
     disclosure: mode === "presenter" ? presenterDisclosure(input.language) : "",
-    segments: plan.map((s, i) => ({ ...timeline[i], audio: s.audioFile, avatar: s.avatarClip })),
+    segments: plan.map((s, i) => ({ ...timeline[i], audio: s.audioFile, avatar: s.avatarClip, presenterAlpha: s.presenterAlpha })),
     shots,
   };
   fs.writeFileSync(path.join(entryDir, "segments.json"), JSON.stringify(data, null, 2));
