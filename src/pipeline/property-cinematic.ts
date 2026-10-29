@@ -2,7 +2,7 @@
 export interface GalleryAsset { photo: string; video?: string; blur?: string; presenter?: boolean; avatar?: string; presenterPos?: 'left' | 'right' | 'center' }
 export type EditStyle = "ad" | "tour";
 export function validateEditStyle(value: unknown): EditStyle {
-  if (value === undefined || value === "ad") return "ad";
+  if (value === undefined || value === null || value === "ad") return "ad";
   if (value === "tour") return "tour";
   throw new Error("Unknown edit style");
 }

@@ -29,6 +29,7 @@ export function presenterReferencePrompt(language: string = "fr"): string {
     "Short dark hair, well-groomed, warm confident smile, direct eye contact with camera.",
     "Natural skin texture with subtle imperfections, professional lighting with soft key light.",
     "Perfectly uniform flat saturated chroma-key green background, RGB 0 255 0, edge to edge. No scenery, shadows, gradients, texture, green clothing or green accessories. Camera locked off. Mouth unobstructed and face forward.",
+    "MANDATORY: The entire background must be exactly RGB(0, 255, 0) pure green. No other colors in background.",
     "Approachable, trustworthy, knowledgeable expression - like a top real estate professional.",
     "Sharp focus on face and eyes, 85mm lens portrait aesthetic, high detail, 8K quality.",
   ].join(" ");

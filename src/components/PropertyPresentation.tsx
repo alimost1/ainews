@@ -60,9 +60,13 @@ export const PropertyPresentation: React.FC<PresentationData> = data => {
         <OffthreadVideo src={staticFile(s.presenterAlpha!)} transparent muted
           style={{width:'100%',height:'100%',objectFit:'contain',objectPosition:'bottom'}} />
       </div> : <div style={{position:'absolute',bottom:460,right:48,width:panelWidth,height:panelWidth*1.3,borderRadius:22,overflow:'hidden'}}>
-        <OffthreadVideo src={staticFile(s.avatar)} muted style={{width:'100%',height:'100%',objectFit:'cover'}} />
-      </div>}
-    </Sequence>)}
+        {/* Check if avatar is a video or static image */}
+        {s.avatar?.endsWith('.mp4') || s.avatar?.endsWith('.webm') ? (
+          <OffthreadVideo src={staticFile(s.avatar)} muted style={{width:'100%',height:'100%',objectFit:'cover'}} />
+        ) : (
+          <Img src={staticFile(s.avatar)} style={{width:'100%',height:'100%',objectFit:'cover'}} />
+        )}
+      </div>}</Sequence>)}
     {presenterMode && <div style={{ position: 'absolute', top: 40, left: 64, fontSize: 20, color: '#d8e0dd', background: 'rgba(6,18,17,.6)', padding: '6px 14px', borderRadius: 8 }}>{data.disclosure}</div>}
     <div style={{ position: 'absolute', left: 64, right: 64, bottom: 180 }}>
       <div style={{ height: 3, width: 74, background: gold, marginBottom: 24 }} />

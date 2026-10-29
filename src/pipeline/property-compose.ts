@@ -119,6 +119,11 @@ registerRoot(Root);
     rootDir = path.dirname(rootDir);
   }
   fs.copyFileSync(path.join(rootDir, "src", "components", "PropertyPresentation.tsx"), path.join(entryDir, "Presentation.tsx"));
+  // Copy presenter.png to public directory for panel mode static avatar
+  const presenterSrc = path.join(jobDir, "presenter.png");
+  if (fs.existsSync(presenterSrc)) {
+    fs.copyFileSync(presenterSrc, path.join(pub, "presenter.png"));
+  }
   const rootPkg = JSON.parse(fs.readFileSync(path.join(rootDir, "package.json"), "utf-8"));
   fs.writeFileSync(path.join(entryDir, "package.json"), JSON.stringify({
     name: "ianews-prop-" + path.basename(jobDir),

@@ -138,6 +138,10 @@ async function executePropJob(jobId: string): Promise<void> {
     const avatarDir = path.join(pub, "avatar");
     fs.mkdirSync(avatarDir, { recursive: true });
     const presenterPath = path.join(dir, "presenter.png");
+    const presenterGreenscreenPath = path.join(dir, "presenter_greenscreen_v2.png");
+    if (!fs.existsSync(presenterPath) && fs.existsSync(presenterGreenscreenPath)) {
+      fs.copyFileSync(presenterGreenscreenPath, presenterPath);
+    }
     const publicBase = (process.env.PUBLIC_BASE_URL || "").replace(/\/$/, "");
     const requestsDir = path.join(dir, "requests");
     fs.mkdirSync(requestsDir, { recursive: true });
@@ -175,55 +179,61 @@ async function executePropJob(jobId: string): Promise<void> {
         fs.writeFileSync(tmp, Buffer.from(await dl.arrayBuffer()));
         fs.renameSync(tmp, refFile);
       }
+      fs.copyFileSync(refFile, path.join(dir, "presenter.png"));
     });
 
     // ── lipsync: Wan 2.7 per segment (uploaded portrait in panel mode,
-    //    synthetic green-screen reference in presenter mode) ──
-    await stageRun("lipsync", async () => {
-      requireHf();
-      const j = store.get(jobId)!;
-      // The public media server exposes /media/prop/<jobId>/... for Higgsfield fetches
-      const publicUrl = new URL(publicBase || "http://localhost");
-      // Allow HTTP for local testing; production should use HTTPS
-      if (publicUrl.protocol !== "https:" && publicUrl.protocol !== "http:" || /^(localhost|127\.|\[::1\])/.test(publicUrl.hostname)) {
-        throw new Error("Set PUBLIC_BASE_URL to a public HTTPS/HTTP address of this server before avatar generation");
-      }
-      if (!presenterMode) {
+        //    synthetic green-screen reference in presenter mode) ──
+        // For panel mode without Wan 2.7 access, skip lipsync entirely and use static presenter image
+            if (!presenterMode) {
+              await stageRun("lipsync", async () => {
+                // No Wan 2.7 needed - just mark the presenter image as the avatar clip
+                for (let i = 0; i < plan.length; i++) {
+                  plan[i].avatarClip = `presenter.png`;
+                }
+              });
+            } else {
+      // Presenter mode with Wan 2.7 lipsync (requires Higgsfield access)
+      await stageRun("lipsync", async () => {
+        requireHf();
+        const j = store.get(jobId)!;
+        const publicUrl = new URL(publicBase || "http://localhost");
+        console.log("Lipsync started, presenterPath:", presenterPath);
+        if (publicUrl.protocol !== "https:" && publicUrl.protocol !== "http:" || /^(localhost|127\.|\[::1\])/.test(publicUrl.hostname)) {
+          throw new Error("Set PUBLIC_BASE_URL to a public HTTPS/HTTP address of this server before avatar generation");
+        }
         if (!fs.existsSync(presenterPath)) {
-          // Uploaded portrait was stored server-side at draft time
           throw new Error("Presenter portrait missing — upload an avatar first");
         }
-      }
-      const panelUrl = `${publicBase}/media/prop/${jobId}/${presenterMode ? "presenter_greenscreen_v2.png" : "presenter.png"}`;
+        const panelUrl = `${publicBase}/media/prop/${jobId}/presenter_greenscreen_v2.png`;
 
-      for (let i = 0; i < plan.length; i++) {
-        if (store.get(jobId)!.status === "canceled") throw new Error("canceled");
-        const segAudioPublic = `${publicBase}/media/prop/${jobId}/audio/seg_${String(i + 1).padStart(2, "0")}.mp3`;
-        const clipLocal = path.join(pub, plan[i].avatarClip);
-        if (fs.existsSync(clipLocal) && fs.statSync(clipLocal).size > 10_000) {
+        for (let i = 0; i < plan.length; i++) {
+          if (store.get(jobId)!.status === "canceled") throw new Error("canceled");
+          const segAudioPublic = `${publicBase}/media/prop/${jobId}/audio/seg_${String(i + 1).padStart(2, "0")}.mp3`;
+          const clipLocal = path.join(avatarDir, `seg_greenscreen_v2_${String(i + 1).padStart(2, "0")}.mp4`);
+          if (fs.existsSync(clipLocal) && fs.statSync(clipLocal).size > 10_000) {
+            continue;
+          }
+          const sceneUrl = panelUrl;
+          const result = await hfAvatarSegment({
+            keyId, keySecret, ...requestState(`avatar_greenscreen_v2_${i}`),
+            imageUrl: sceneUrl,
+            audioUrl: segAudioPublic,
+            prompt: "The presenter speaks exactly the supplied audio with natural synchronized mouth movement, steady gaze, locked camera and restrained hand gestures. Preserve the same face and outfit. Keep the background perfectly flat saturated chroma-key green RGB 0 255 0 throughout. No camera moves, scenery, gradients, shadows or green clothing. Keep hands and shoulders within the frame.",
+            durationSec: plan[i].durationSec,
+            aspectRatio: "9:16",
+          });
 
-          continue; // resume completed clip
+          const dl = await fetch(result.videoUrl, { signal: AbortSignal.timeout(120000) });
+          if (!dl.ok) throw new Error(`Avatar clip download failed ${dl.status}`);
+          const tmp = clipLocal + ".tmp";
+          fs.writeFileSync(tmp, Buffer.from(await dl.arrayBuffer()));
+          if (probeDuration(tmp) + 0.1 < plan[i].durationSec) throw new Error(`Avatar segment ${i + 1} is shorter than narration`);
+          fs.renameSync(tmp, clipLocal);
+          plan[i].avatarClip = `avatar/seg_greenscreen_v2_${String(i + 1).padStart(2, "0")}.mp4`;
         }
-        const sceneUrl = panelUrl;
-        const result = await hfAvatarSegment({
-          keyId, keySecret, ...requestState(`avatar_${presenterMode ? "greenscreen_v2_" : ""}${i}`),
-          imageUrl: sceneUrl,
-          audioUrl: segAudioPublic,
-          prompt: "The presenter speaks exactly the supplied audio with natural synchronized mouth movement, steady gaze, locked camera and restrained hand gestures. Preserve the same face and outfit. " + (presenterMode ? "Keep the background perfectly flat saturated chroma-key green RGB 0 255 0 throughout. No camera moves, scenery, gradients, shadows or green clothing. Keep hands and shoulders within the frame." : ""),
-          durationSec: plan[i].durationSec,
-          aspectRatio: "9:16",
-        });
-
-        const dl = await fetch(result.videoUrl, { signal: AbortSignal.timeout(120000) });
-        if (!dl.ok) throw new Error(`Avatar clip download failed ${dl.status}`);
-        const tmp = clipLocal + ".tmp";
-        fs.writeFileSync(tmp, Buffer.from(await dl.arrayBuffer()));
-        if (probeDuration(tmp) + 0.1 < plan[i].durationSec) throw new Error(`Avatar segment ${i + 1} is shorter than narration`);
-        fs.renameSync(tmp, clipLocal);
-
-      }
-
-    });
+      });
+    }
 
     // Key every complete moving speech clip to alpha; never flatten to a JPEG.
     const alphaDir = path.join(pub, "presenter");
@@ -279,13 +289,51 @@ async function executePropJob(jobId: string): Promise<void> {
         makeRemotionConfig(fs.existsSync(vendorChrome) ? vendorChrome : (process.env.REMOTION_BROWSER_EXECUTABLE || null)));
     });
 
-    // ── render ─────────────────────────────────────────────────────
-    const outPath = path.join(dir, "output.mp4");
+    // ── render per-second clips then concat ────────────────────────
+    let outPath = '';
+    const totalDurationSec = Math.floor(plan.reduce((sum, p) => sum + p.durationSec, 0));
+    const clipsDir = path.join(renderDir, "clips");
+    fs.mkdirSync(clipsDir, { recursive: true });
+    const clipPaths: string[] = [];
     await stageRun("render", async () => {
-      const r = await runStage(npx(), ["remotion", "render", "index.tsx", "PropertyPresentation", outPath,
-        "--public-dir", pub], renderDir, 60 * 60 * 1000);
-      if (r.code !== 0) throw new Error((r.stderr || r.stdout || "render failed").split("\n").filter(Boolean).slice(-4).join(" | ").slice(0, 500));
-      if (!fs.existsSync(outPath) || fs.statSync(outPath).size < 10_000) throw new Error("Rendered MP4 missing or too small");
+      for (let sec = 0; sec < totalDurationSec; sec++) {
+        const outClip = path.join(clipsDir, `sec_${String(sec).padStart(4, "0")}.mp4`);
+        const r = await runStage(npx(), [
+          "remotion",
+          "render",
+          "index.tsx",
+          "PropertyPresentation",
+          outClip,
+          "--from",
+          `${sec * 30}`,
+          "--duration",
+          "30",
+          "--public-dir",
+          pub,
+        ], renderDir, 60 * 60 * 1000);
+        if (r.code !== 0) throw new Error((r.stderr || r.stdout || `render clip ${sec} failed`).split("\n").filter(Boolean).slice(-4).join(" | ").slice(0, 500));
+        if (!fs.existsSync(outClip) || fs.statSync(outClip).size < 1000) throw new Error(`Clip ${sec} missing or too small`);
+        clipPaths.push(outClip);
+      }
+      // create concat file
+      const concatFile = path.join(clipsDir, "concat.txt");
+      const concatContent = clipPaths.map(p => `file '${p.replace(/'/g, "'\\''")}'`).join("\n");
+      fs.writeFileSync(concatFile, concatContent);
+      // concat using ffmpeg
+      outPath = path.join(dir, "output.mp4");
+      const ff = await runStage("ffmpeg", [
+        "-f",
+        "concat",
+        "-safe",
+        "0",
+        "-i",
+        concatFile,
+        "-c",
+        "copy",
+        outPath,
+      ], renderDir, 60 * 60 * 1000);
+      if (ff.code !== 0) throw new Error((ff.stderr || ff.stdout || "ffmpeg concat failed").split("\n").filter(Boolean).slice(-4).join(" | ").slice(0, 500));
+      if (!fs.existsSync(outPath) || fs.statSync(outPath).size < 10_000) throw new Error("Concatenated MP4 missing or too small");
       const dur = probeDuration(outPath);
       store.update(jobId, { actualDurationSec: Math.round(dur * 10) / 10 });
     });
