@@ -6,7 +6,7 @@ import * as os from 'os';
 
 // ─── Pure-function tests (no network) ───────────────────────────────
 
-const extract: any = require('../dist/pipeline/property-extract.js');
+const extract: any = require('../src/pipeline/property-extract');
 
 test('extractListingFromHtml parses a typical Moroccan listing (fr)', () => {
   const html = `
@@ -96,7 +96,7 @@ test('isPrivateIp logic via adapter behavior: localhost and private hosts reject
 
 // ─── Property presentation helpers ────────────────────────────────────
 
-const pres: any = require('../dist/pipeline/property-presentation.js');
+const pres: any = require('../src/pipeline/property-presentation');
 
 test('segmentNarration splits 45-60s narration into <=14s segments without losing words', () => {
   const words = Array.from({ length: 130 }, (_, i) => `mot${i}`);
@@ -110,25 +110,22 @@ test('segmentNarration splits 45-60s narration into <=14s segments without losin
   assert.equal(two.length, 1);
 });
 
-test('estimateCost returns bounded, labeled approximations', () => {
+test('cost display avoids unsupported fixed pricing', () => {
   const est = pres.estimateCost(52);
-  for (const v of [est.higgsfieldUsd, est.elevenLabsUsd]) {
-    assert.ok(v.startsWith('$'), 'cost must start with $: ' + v);
-    assert.ok(/^\$\d+(\.\d{2})$/.test(v), 'cost must be $N.NN: ' + v);
-  }
-  assert.ok(est.note.includes('Approximate'));
+  assert.equal(est.higgsfieldUsd, 'Check provider billing');
+  assert.match(est.note, /model, resolution and account/);
 });
 
 // ─── Job store lifecycle ─────────────────────────────────────────────
 
-const propJobs: any = require('../dist/pipeline/property-jobs.js');
+const propJobs: any = require('../src/pipeline/property-jobs');
 
 function freshStore() {
   const tmp = fs.mkdtempSync(path.join(os.tmpdir(), 'ianews-prop-'));
   process.env.IANEWS_PROP_INDEX = path.join(tmp, 'index.json');
   fs.writeFileSync(process.env.IANEWS_PROP_INDEX, '{}');
-  delete require.cache[require.resolve('../dist/pipeline/property-jobs.js')];
-  const mod = require('../dist/pipeline/property-jobs.js');
+  delete require.cache[require.resolve('../src/pipeline/property-jobs')];
+  const mod = require('../src/pipeline/property-jobs');
   return { store: new mod.PropJobStore(), tmp };
 }
 
@@ -176,7 +173,7 @@ test('narration validation rejects too-short scripts before queueing', () => {
 
 // ─── Composition plan ─────────────────────────────────────────────────
 
-const compose: any = require('../dist/pipeline/property-compose.js');
+const compose: any = require('../src/pipeline/property-compose');
 
 test('planCaptions uses only reviewed facts and never invents features', () => {
   const caps = compose.planCaptions({
@@ -209,11 +206,11 @@ test('generated Remotion project sequences segments consecutively at measured du
   });
   const src = fs.readFileSync(path.join(entryDir, 'index.tsx'), 'utf-8');
   // durations rounded to frames and used for Sequence boundaries
-  assert.match(src, /"duration":12\.5/);
-  assert.match(src, /"duration":11\.2/);
-  assert.match(src, /starts\[idx\]/);
-  assert.match(src, /Math\.round\(acc\*FPS\)/); // consecutive offsets, no overlap
-  assert.match(src, /RTL = false/);
+  assert.match(src, /"duration":375/);
+  assert.match(src, /"from":375,"duration":336/);
+  assert.match(src, /"totalFrames":711/);
+  assert.match(src, /"shots":\[/); // consecutive offsets, no overlap
+  assert.match(src, /"rtl":false/);
   // Arabic variant flips RTL
   const plan2 = plan.slice();
   const src2 = (() => {
@@ -227,8 +224,8 @@ test('generated Remotion project sequences segments consecutively at measured du
     });
     return fs.readFileSync(path.join(d2, 'index.tsx'), 'utf-8');
   })();
-  assert.match(src2, /RTL = true/);
-  assert.match(src2, /direction: RTL\?"rtl":"ltr"/);
+  assert.match(src2, /"rtl":true/);
+  assert.match(fs.readFileSync(path.join(tmp + "2", "render", "Presentation.tsx"), "utf8"), /data.rtl/);
   fs.rmSync(tmp, { recursive: true, force: true });
   fs.rmSync(tmp + '2', { recursive: true, force: true });
 });

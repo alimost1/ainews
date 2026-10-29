@@ -105,7 +105,25 @@
     <h3 style="font-size:.95rem;margin-top:16px">Photos de l'annonce <span class="warn-note">(cliquez pour sélectionner · l'ordre de sélection = ordre d'affichage)</span></h3>
     <div class="gallery" id="gallery"></div>
 
-    <h3 style="font-size:.95rem;margin-top:16px">Avatar présentateur</h3>
+    <label for="f-motion">Mouvement des photos</label>
+    <select id="f-motion">
+      <option value="photo">Montage dynamique · photos réelles · sans coût vidéo supplémentaire</option>
+      <option value="kling-3-pro">Kling 3.0 Pro · mouvements de caméra IA</option>
+      <option value="wan-3">Wan 3.0 · mouvements de caméra IA · 1080p</option>
+    </select>
+    <p class="warn-note">Les modes IA génèrent un clip de 5 s par photo sélectionnée, en plus de l’avatar. Vérifiez le résultat : l’IA peut modifier des détails du bien. Le montage photo conserve les images d’origine.</p>
+    <label for="f-contact">Contact de fin de vidéo</label><input id="f-contact" type="text" placeholder="Téléphone ou site de l’agence">
+    <h3 style="font-size:.95rem;margin-top:16px">Présentateur</h3>
+    <label for="f-mode">Mode de présentation</label>
+    <select id="f-mode">
+      <option value="panel">Panneau présentateur (portrait uploadé · pas d'édition des photos)</option>
+      <option value="presenter" selected>Présentateur détouré transparent dans la vidéo</option>
+    </select>
+    <p class="warn-note">Le présentateur est généré sur fond vert, synchronisé avec la narration, puis détouré en vidéo transparente. Un seul portrait est généré ; les photos du bien restent intactes. Le panneau nécessite un portrait uploadé.</p>
+    <label for="f-edit">Rythme du montage</label>
+    <select id="f-edit"><option value="ad">Publicité dynamique · plans de 2 secondes</option><option value="tour">Visite calme · plans de 4 secondes</option></select>
+    <p class="warn-note">Pour une publicité courte, visez 15–30 secondes de narration. Le montage ne coupe pas votre texte.</p>
+    <h3 style="font-size:.95rem;margin-top:16px">Avatar présentateur (mode panneau)</h3>
     <div class="row" style="align-items:center">
       <div><label>Uploader un portrait (PNG/JPG, max 2 Mo)</label><input type="file" id="avatar-file" accept="image/png,image/jpeg"></div>
       <div><img id="avatar-preview" class="avatar-preview hidden" alt=""></div>
@@ -131,15 +149,15 @@
 (function(){
 "use strict";
 const $ = id => document.getElementById(id);
-const esc = s => String(s).replace(/[&<>"']/g, c => ({"&":"&","<":"<",">":">",'"':""","'":"&#39;"}[c]));
+const esc = s => String(s).replace(/[&<>"']/g, c => ({"&":"&","<":"<",">":">",'"':"&quot;","'":"&#39;"}[c]));
 let extracted = null, selectedPhotos = [], avatarId = null, currentJobId = null, pollTimer = null;
 
 async function api(path, opts){ const r = await fetch(path, opts); const b = await r.json().catch(()=>({}));
   if (!r.ok) throw new Error(b.error || ("HTTP "+r.status)); return b; }
 
-const STAGE_LBL = { fr:{extract:"Extraction",script:"Script",voice:"Voix",avatar:"Avatar",compose:"Composition",render:"Rendu"},
-  ar:{extract:"استخراج",script:"سيناريو",voice:"صوت",avatar:"الصورة المتحركة",compose:"تركيب",render:"إخراج"},
-  en:{extract:"Extract",script:"Script",voice:"Voice",avatar:"Avatar",compose:"Compose",render:"Render"} };
+const STAGE_LBL = { fr:{extract:"Extraction",script:"Script",voice:"Voix",presenter:"Présentateur IA",scenePrep:"Scènes",motion:"Mouvement",lipsync:"Lip-sync",compose:"Composition",render:"Rendu"},
+  ar:{extract:"استخراج",script:"سيناريو",voice:"صوت",presenter:"المقدّم",scenePrep:"مشاهد",motion:"حركة الصور",lipsync:"مزامنة الشفاه",compose:"تركيب",render:"إخراج"},
+  en:{extract:"Extract",script:"Script",voice:"Voice",presenter:"AI presenter",scenePrep:"Scenes",motion:"Motion",lipsync:"Lip-sync",compose:"Compose",render:"Render"} };
 function lang(){ return $("f-lang").value || "fr"; }
 
 // ── Capability banner
@@ -161,7 +179,7 @@ $("extract-btn").addEventListener("click", async () => {
     extracted = listing;
     fillForm(listing);
     $("review-card").classList.remove("hidden");
-    suggestNarration(false);
+    suggestNarration(true);
   } catch (e) {
     const box = $("extract-error"); box.textContent = e.message + " — vous pouvez saisir les détails manuellement ci-dessous.";
     box.classList.remove("hidden");
@@ -242,8 +260,13 @@ $("generate-btn").addEventListener("click", async () => {
   $("gen-error").classList.add("hidden");
   const clientToken = "prop-" + Date.now() + "-" + Math.random().toString(36).slice(2,8);
   try {
+    const mode = $("f-mode").value;
+    if (mode !== "presenter" && !avatarId) throw new Error("Veuillez uploader un portrait du présentateur (ou choisissez le mode présentateur IA).");
+    if (!selectedPhotos.length) throw new Error("Sélectionnez les photos à présenter.");
     const body = {
       clientToken, sourceUrl: $("f-source").value,
+      mode, editStyle: $("f-edit").value,
+      motionModel: $("f-motion").value,
       language: lang(), voiceId: $("f-voice").value.trim(),
       narration: $("f-narr").value.trim(),
       avatarId: avatarId || undefined,
@@ -256,15 +279,21 @@ $("generate-btn").addEventListener("click", async () => {
         bathrooms: $("f-baths").value ? Number($("f-baths").value) : null,
         description: $("f-desc").value, images: selectedPhotos,
       },
-      branding: { agencyName: $("f-agency").value, contactLine: "" },
+      branding: { agencyName: $("f-agency").value, contactLine: $("f-contact").value },
     };
     const { job } = await api("/api/property/jobs", { method:"POST",
       headers:{"Content-Type":"application/json"}, body: JSON.stringify(body) });
     const cfg = await api("/api/property/config");
-    if (!confirm("Confirmez la génération ?\n\nModèle avatar: " + cfg.lipSync.model +
-      "\nVoix: ElevenLabs " + (body.voiceId || cfg.tts.defaultVoiceId) +
-      "\nDurée cible: 45-60s\nCoût estimé: " + cfg.costEstimate.higgsfieldUsd + " (Higgsfield) + " +
-      cfg.costEstimate.elevenLabsUsd + " (ElevenLabs)\n" + cfg.costEstimate.note)) {
+    const seconds = Math.ceil(body.narration.split(/\s+/).length / 2.6);
+    const motionLabel = body.motionModel === "photo" ? "Montage photo (sans génération vidéo des pièces)" : cfg.motion.models[body.motionModel].label;
+    const presenterLabel = body.mode === "presenter" ? "\nPrésentateur transparent : 1 portrait de référence + clips lip-sync de la narration ; détourage local" : "";
+    if (!confirm("Confirmez la génération payante ?\n\nMode : " + (body.mode === "presenter" ? "Présentateur IA dans les photos" : "Panneau présentateur") +
+      "\nAvatar : " + cfg.lipSync.model + " · 1080p" +
+      "\nVoix : " + (body.voiceId || cfg.tts.defaultVoiceId) +
+      "\nMontage : " + (body.editStyle === "ad" ? "publicité · plans de 2 s" : "visite · plans de 4 s") + "\nNarration estimée : " + seconds + " s (durée finale mesurée)" +
+      "\nPhotos : " + selectedPhotos.length + " · " + motionLabel + presenterLabel +
+      (body.motionModel === "photo" ? "" : "\nClips IA : " + selectedPhotos.length + " × 5 s = " + selectedPhotos.length * 5 + " secondes facturables") +
+      "\nLe tarif dépend du compte et du modèle. Consultez la facturation Higgsfield et ElevenLabs avant de confirmer.")) {
       btn.disabled = false; return;
     }
     currentJobId = job.id;
@@ -302,7 +331,7 @@ function renderJobs(){
     jobs.slice(0,10).forEach(j => {
       const d = document.createElement("div"); d.className = "job";
       const acts = [];
-      if (j.status === "draft") acts.push(`<button data-a="generate" data-id="${j.id}">Générer</button> `);
+      if (["draft","failed"].includes(j.status)) acts.push(`<button data-a="generate" data-id="${j.id}">Générer</button> `);
       if (["queued","running"].includes(j.status)) acts.push(`<button class="ghost" data-a="cancel" data-id="${j.id}">Annuler</button> `);
       if (j.status === "completed" && j.output) acts.push(`<a href="/api/property/jobs/${j.id}/video" download><button type="button">⬇ Télécharger</button></a> `);
       d.innerHTML = `<div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap">

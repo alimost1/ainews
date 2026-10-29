@@ -14,7 +14,9 @@
  * All provider keys stay server-side; responses never include them.
  */
 import * as http from "http";
+import { validateEditStyle } from "./property-cinematic";
 import { MOTION_MODELS, validateMotion } from "./property-models";
+import { PRESENTER_MODEL, validatePresenterMode } from "./property-presenter";
 import * as fs from "fs";
 import * as path from "path";
 import { URL } from "url";
@@ -65,6 +67,16 @@ export function propertyCapabilities() {
       missing: hfConfigured ? [] : ["HF_API_KEY_ID", "HF_API_KEY_SECRET"],
     },
     motion: { supported: hfConfigured, models: MOTION_MODELS, default: "photo" },
+    presenter: {
+      supported: hfConfigured,
+      provider: "Higgsfield",
+      model: PRESENTER_MODEL.id,
+      verifiedEndpoint: `POST ${PRESENTER_MODEL.url}`,
+      params: { prompt: "single consistent male presenter on uniform green screen" },
+      disclosure: "AI-generated presenter disclosure is rendered on every presenter-mode video",
+      defaultMode: "panel", // panel mode never bills the presenter/scenePrep models
+      imageGenerations: "1 green-screen reference; audio-driven video per narration segment; local alpha removal",
+    },
     tts: {
       supported: elevenConfigured,
       provider: "ElevenLabs",
@@ -93,10 +105,12 @@ function validateDraft(body: any) {
     ? listing.images.filter((i: unknown) => typeof i === "string" && /^https?:\/\//.test(i) || typeof i === "string" && i.startsWith("uploaded:")).slice(0, 20)
     : [];
   return {
+    editStyle: validateEditStyle(body.editStyle),
+    mode: validatePresenterMode(body.mode),
     motionModel: validateMotion(body.motionModel),
     sourceUrl: str(body.sourceUrl, 500) || "",
     language,
-    voiceId: str(body.voiceId, 64) || (process.env.ELEVEN_VOICE_ID || "JBFqnCBsd6RMkjVDRZzb"),
+    voiceId: str(body.voiceId, 64) || (process.env.ELEVEN_VOICE_ID || "cjVigY5qzO86Huf0OWal"),
     narration,
     listing: {
       title: str(listing.title, 300),
@@ -134,7 +148,16 @@ export async function handlePropertyApi(req: http.IncomingMessage, res: http.Ser
   if (p === "/api/property/config" && m === "GET") {
     const caps = propertyCapabilities();
     const est = estimateCost(52);
-    json(res, 200, { ...caps, costEstimate: est, queue: propQueueStats() });
+    const photoCountHint = 5;
+    json(res, 200, { ...caps, costEstimate: { ...est,
+      presenterMode: {
+        referenceImages: 1,
+        sceneImagesPerPhoto: 0,
+        examplePhotos: photoCountHint,
+        exampleImageTotal: 1,
+        note: "Presenter mode generates one green-screen reference and lip-sync clips. Background removal is local, not an image generation per photo.",
+        model: PRESENTER_MODEL.id,
+      } }, queue: propQueueStats() });
     return true;
   }
 
@@ -184,6 +207,8 @@ export async function handlePropertyApi(req: http.IncomingMessage, res: http.Ser
         sourceUrl: draft.sourceUrl,
         language: draft.language,
         motionModel: draft.motionModel,
+        mode: draft.mode,
+        editStyle: draft.editStyle,
         voiceId: draft.voiceId,
         narration: draft.narration,
         listing: draft.listing,

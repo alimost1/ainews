@@ -36,7 +36,10 @@ export interface PropJobRecord {
   listing: PropJobInput["listing"];
   branding: PropJobInput["branding"];
   avatarProvided: boolean;
+  editStyle?: import("./property-cinematic").EditStyle;
   motionModel?: import("./property-models").PropertyMotion;
+  presenterVersion?: "greenscreen-v2";
+  mode?: import("./property-presenter").ComposeMode;
   stages: Record<PropStage, PropStageRecord>;
   segments?: { text: string; audioSec?: number }[];
   actualDurationSec?: number;
@@ -49,7 +52,14 @@ function readIndex(): Record<string, PropJobRecord> {
   try {
     const jobs = JSON.parse(fs.readFileSync(INDEX_PATH, "utf-8"));
     for (const job of Object.values(jobs) as PropJobRecord[]) {
-      job.stages.motion ||= { status: "pending", attempts: 0 };
+      // Stage-list migrations (never clobber completed/failed work):
+      if ((job.stages as any).avatar && !job.stages.lipsync) {
+        job.stages.lipsync = (job.stages as any).avatar; // old name of the Wan lip-sync stage
+        delete (job.stages as any).avatar;
+      }
+      for (const s of ["motion", "presenter", "scenePrep", "lipsync"] as PropStage[]) {
+        job.stages[s] ||= { status: "pending", attempts: 0 };
+      }
     }
     return jobs;
   } catch { return {}; }
@@ -94,7 +104,7 @@ export class PropJobStore {
     stages.extract.status = "completed"; // extraction happened before draft creation
     const job: PropJobRecord = {
       id, status: "draft", createdAt: now, updatedAt: now,
-      stages, ...input,
+      stages, ...input, presenterVersion: input.mode === "presenter" ? "greenscreen-v2" : undefined,
     };
     this.jobs[id] = job;
     fs.mkdirSync(propJobDir(id), { recursive: true });
